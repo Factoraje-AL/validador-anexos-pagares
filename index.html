@@ -183,6 +183,7 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
 </style>
 </head>
 <body>
+<script>if(!/claude|anthropic|^localhost$|^127\.0\.0\.1$/i.test(location.hostname))document.body.classList.add("gated")</script>
 <!-- ============ acceso ============ -->
 <div id="gatebg" class="gatebg" hidden></div>
 <div id="gate" class="gate" hidden>
@@ -313,7 +314,7 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
 </div>
 
 <script src="lib/pdf.min.js"></script>
-<script src="engine.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="engine.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

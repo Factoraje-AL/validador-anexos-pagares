@@ -416,8 +416,10 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   /* ---------- acceso con cuenta (Supabase Auth) ----------
      Pon aquí la URL del proyecto y la llave pública (anon). Mientras estén vacías, el validador queda abierto
      y la pantalla de acceso solo se puede ver como vista previa en  #login . */
-  const AUTH = { url: '', key: '' };
-  const authOn = !!(AUTH.url && AUTH.key);
+  const AUTH = { url: 'https://hwuxlnhwyewrheveazvy.supabase.co', key: 'sb_publishable_wbZAFoV5kE8_9wtOScZwgA_X-mFuqe3' };   // llave pública (publishable), nunca la secreta
+  // En la vista previa de Claude y en pruebas locales no hay conexión con Supabase: ahí el validador queda abierto.
+  const OPEN_HOST = /claude|anthropic|^localhost$|^127\.0\.0\.1$/i.test(location.hostname);
+  const authOn = !!(AUTH.url && AUTH.key) && !OPEN_HOST;
   let sb = null, signup = false;
   function gate(on) {
     document.body.classList.toggle('gated', on);
