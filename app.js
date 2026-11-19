@@ -413,6 +413,77 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     setTimeout(showTitle, 6000);               // por si el video no arranca
   })();
 
+  /* ---------- acceso con cuenta (Supabase Auth) ----------
+     Pon aquí la URL del proyecto y la llave pública (anon). Mientras estén vacías, el validador queda abierto
+     y la pantalla de acceso solo se puede ver como vista previa en  #login . */
+  const AUTH = { url: '', key: '' };
+  const authOn = !!(AUTH.url && AUTH.key);
+  let sb = null, signup = false;
+  function gate(on) {
+    document.body.classList.toggle('gated', on);
+    $('gate').hidden = !on; $('gatebg').hidden = !on;
+    const v = $('gate-video');
+    if (on) { const p = v.play(); if (p && p.catch) p.catch(() => {}); } else v.pause();
+  }
+  function gateText() {
+    $('g-go').textContent = signup ? 'Crear cuenta' : 'Entrar';
+    $('g-switch-q').textContent = signup ? '¿Ya tienes cuenta?' : '¿Primera vez?';
+    $('g-toggle').textContent = signup ? 'Entrar' : 'Crear cuenta';
+    $('g-pass').autocomplete = signup ? 'new-password' : 'current-password';
+  }
+  function gateMsg(text, info, bad) {
+    document.querySelectorAll('#gate-form input').forEach(i => i.classList.remove('bad'));
+    const e = $('g-err'); e.classList.toggle('info', !!info); e.textContent = text || '';
+    (bad || []).forEach(id => $(id).classList.add('bad'));
+  }
+  function authMsg(m) {
+    const x = (m || '').toLowerCase();
+    if (x.includes('invalid login')) return ['Correo o contraseña incorrectos. Revísalos e inténtalo de nuevo.', ['g-email', 'g-pass']];
+    if (x.includes('not confirmed')) return ['Aún no confirmas tu correo. Abre el enlace que te enviamos y luego entra.', ['g-email']];
+    if (x.includes('already registered')) return ['Ese correo ya tiene cuenta. Entra con tu contraseña.', ['g-email']];
+    if (x.includes('signups not allowed') || x.includes('signup is disabled')) return ['No se pueden crear cuentas aquí. Pide al administrador que te dé de alta.', []];
+    if (x.includes('password')) return ['La contraseña no es válida: usa al menos 6 caracteres.', ['g-pass']];
+    if (x.includes('email') && x.includes('valid')) return ['Ese correo no parece válido.', ['g-email']];
+    if (x.includes('rate limit') || x.includes('too many')) return ['Demasiados intentos. Espera un momento e inténtalo de nuevo.', []];
+    if (x.includes('fetch') || x.includes('network')) return ['No hay conexión. Revisa tu internet e inténtalo de nuevo.', []];
+    return [m || 'No se pudo entrar.', []];
+  }
+  $('g-eye').addEventListener('click', () => { const i = $('g-pass'), on = i.type === 'password'; i.type = on ? 'text' : 'password'; $('g-eye').setAttribute('aria-pressed', on); $('g-eye').setAttribute('aria-label', on ? 'Ocultar contraseña' : 'Mostrar contraseña'); i.focus(); });
+  $('g-toggle').addEventListener('click', () => { signup = !signup; gateText(); gateMsg(''); });
+  document.querySelectorAll('#gate-form input').forEach(i => i.addEventListener('input', () => { if (!$('g-err').classList.contains('info')) gateMsg(''); }));
+  $('gate-form').addEventListener('submit', async e => {
+    e.preventDefault(); gateMsg('');
+    const email = $('g-email').value.trim(), password = $('g-pass').value;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return gateMsg('Escribe tu correo.', false, ['g-email']);
+    if (password.length < 6) return gateMsg('Escribe tu contraseña (mínimo 6 caracteres).', false, ['g-pass']);
+    if (!authOn) return gateMsg('Vista previa: el acceso con cuenta todavía no está conectado, así que nadie puede entrar ni crear cuentas desde aquí.', true);
+    $('g-go').disabled = true;
+    let r;
+    try { r = signup ? await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } }) : await sb.auth.signInWithPassword({ email, password }); }
+    catch (err) { r = { error: err }; }
+    $('g-go').disabled = false;
+    if (r.error) { const [t, bad] = authMsg(r.error.message); return gateMsg(t, false, bad); }
+    if (signup && !(r.data && r.data.session)) return gateMsg('Revisa tu correo para confirmar la cuenta y luego entra.', true);
+    $('g-pass').value = ''; enter();
+  });
+  function enter() { gate(false); $('signout').hidden = !authOn; }
+  $('signout').addEventListener('click', async () => { try { await sb.auth.signOut(); } catch (e) { /* sin sesión */ } location.reload(); });
+  async function startAuth() {
+    gateText();
+    if (!authOn) {                                                 // sin configurar: solo vista previa
+      const preview = () => { const on = location.hash === '#login'; gate(on); if (on) { $('g-fine').innerHTML = 'Vista previa del acceso. <button type="button" id="g-back">Volver al validador</button>'; $('g-back').onclick = () => { location.hash = 'validar'; }; } };
+      window.addEventListener('hashchange', preview); preview(); return;
+    }
+    gate(true);                                                    // configurado: cerrado hasta confirmar la sesión
+    try {
+      await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js');
+      sb = window.supabase.createClient(AUTH.url, AUTH.key);
+      const { data } = await sb.auth.getSession();
+      if (data && data.session) enter();
+      sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') gate(true); });
+    } catch (e) { gateMsg('No se pudo conectar con el servicio de acceso. Revisa tu internet y recarga la página.'); }
+  }
+
   /* ---------- arranque ---------- */
   buildFields($('fAnexo'), ANEXO_FIELDS); buildFields($('fPagare'), PAGARE_FIELDS);
   wireDrop('Anexo'); wireDrop('Pagare'); wireDelete('Anexo'); wireDelete('Pagare');
@@ -441,4 +512,5 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
   if (saved && saved.text && loadCatalog(saved.text, saved.info || 'guardado en este navegador', false)) { boxStatus('Anexo'); boxStatus('Pagare'); rebuild(); }
   else loadDemo();
+  startAuth();
 })();

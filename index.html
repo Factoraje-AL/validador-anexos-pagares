@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" translate="no">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Validador de Anexos y Pagarés</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,6 +26,44 @@
 [hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+/* acceso (misma composición que el acceso de Atlas: marca arriba, titular abajo a la izquierda, formulario de vidrio oscuro a la derecha) */
+body.gated>:not(#gate):not(#gatebg):not(script){display:none!important}
+.gatebg{position:fixed;inset:0;z-index:0;overflow:hidden;background:
+  radial-gradient(55% 50% at 74% 60%,rgba(242,169,59,.13),transparent 70%),
+  radial-gradient(40% 40% at 16% 28%,rgba(242,169,59,.07),transparent 70%),#000}
+.gate{position:relative;z-index:1;min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto 1fr;gap:0 48px;padding:44px clamp(24px,6vw,84px) 64px;color:#f6f3ec;font-family:var(--sans)}
+.gate-brand{grid-column:1/-1;display:flex;justify-content:space-between;gap:16px;font-size:15px;font-weight:600;letter-spacing:.42em;text-transform:uppercase;color:#fff}
+.gate-brand span{font-weight:400;font-size:11px;letter-spacing:.32em;color:rgba(255,255,255,.7);align-self:center}
+.gate-copy{align-self:end;max-width:580px;padding-bottom:28px;display:flex;flex-direction:column}
+.gate-copy video{width:min(440px,90%);aspect-ratio:16/9;mix-blend-mode:screen;filter:contrast(1.25) brightness(.9);-webkit-mask-image:radial-gradient(ellipse 62% 70% at 50% 50%,#000 55%,transparent 100%);mask-image:radial-gradient(ellipse 62% 70% at 50% 50%,#000 55%,transparent 100%);margin:0 0 6px -8%;pointer-events:none}
+.gate-copy h1{font-family:var(--display);font-weight:500;font-size:clamp(42px,5.2vw,70px);line-height:1.02;letter-spacing:0;color:#fff;margin:0;text-wrap:balance}
+.gate-copy h1 em{font-style:normal;color:#f2a93b}
+.gate-copy p{margin:18px 0 0;font-size:16.5px;line-height:1.55;color:rgba(246,243,236,.82);max-width:46ch}
+.gate-card{align-self:center;justify-self:center;width:min(500px,100%);padding:34px 38px 30px;border-radius:16px;background:rgba(14,12,8,.6);border:1px solid rgba(255,255,255,.1);box-shadow:0 30px 80px rgba(0,0,0,.55);-webkit-backdrop-filter:blur(22px) saturate(120%);backdrop-filter:blur(22px) saturate(120%)}
+.gate form{display:flex;flex-direction:column;gap:18px}
+.gate label{display:flex;flex-direction:column;gap:10px;font-size:16px;font-weight:400;color:#fff}
+.gate input{height:52px;padding:0 14px;border-radius:7px;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.25);color:#fff;font-size:16px;caret-color:#fff}
+.gate input:focus-visible{outline:2px solid #f2a93b;outline-offset:1px}
+.gate input:-webkit-autofill{-webkit-text-fill-color:#fff;-webkit-box-shadow:0 0 0 60px #0d0b07 inset;caret-color:#fff}
+.gate input.bad{border-color:#ff8f7d;box-shadow:0 0 0 3px rgba(226,96,76,.28)}
+.pw{position:relative;display:block}
+.pw input{padding-right:52px}
+.pw button{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:38px;height:38px;padding:0;border:0;border-radius:7px;background:none;color:rgba(255,255,255,.75)}
+.pw button:hover{color:#fff;background:rgba(255,255,255,.1)}
+.pw button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.pw button .off{display:none} .pw button[aria-pressed="true"] .off{display:block}
+.gate .go{height:56px;margin-top:2px;border:0;border-radius:11px;background:#f2a93b;color:#14100a;font-size:17px;font-weight:600}
+.gate .go:hover{background:#ffbb52;box-shadow:0 10px 30px rgba(242,169,59,.22)}
+.gate .go:disabled{opacity:.6;cursor:default}
+.gate .err:not(:empty){display:flex;gap:9px;align-items:flex-start;padding:11px 13px;border-radius:8px;background:rgba(214,72,52,.2);border:1px solid rgba(255,140,120,.5);color:#ffc9bf;font-size:14px;font-weight:500;line-height:1.4}
+.gate .err:not(:empty)::before{content:"!";flex:none;width:18px;height:18px;border-radius:50%;background:#e2604c;color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;margin-top:1px}
+.gate .err.info:not(:empty){background:rgba(242,169,59,.14);border-color:rgba(242,169,59,.5);color:#ffe2b0}
+.gate .err.info:not(:empty)::before{content:"i";background:#b97a17}
+.gate .switch{text-align:center;font-size:13px;color:rgba(246,243,236,.75);margin:16px 0 0}
+.gate .switch button,.gate .fine button{background:none;border:0;border-radius:0;text-decoration:underline;text-underline-offset:3px;padding:0;color:#fff;font-size:inherit;font-weight:400}
+.gate .fine{text-align:center;font-size:12px;color:rgba(246,243,236,.6);margin:10px 0 0}
+@media (max-width:860px){.gate{grid-template-columns:1fr;grid-template-rows:auto auto auto;gap:26px;padding:28px 18px 40px;align-content:start}.gate-copy{align-self:start;padding:2vh 0 0}.gate-copy h1{font-size:40px}.gate-copy p{font-size:15px}.gate-card{padding:24px 20px 22px}}
+@media (prefers-reduced-motion:reduce){.gate-copy video{display:none}}
 /* barra */
 .nav{position:sticky;top:0;z-index:20;background:rgba(250,249,246,.74);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border-bottom:1px solid var(--line)}
 .navin{max-width:1040px;margin:0 auto;padding-inline:24px;display:flex;align-items:stretch;gap:8px 30px;min-height:58px;flex-wrap:wrap}
@@ -144,6 +183,27 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
 </style>
 </head>
 <body>
+<!-- ============ acceso ============ -->
+<div id="gatebg" class="gatebg" hidden></div>
+<div id="gate" class="gate" hidden>
+  <div class="gate-brand">Active Leasing <span>Factoraje</span></div>
+  <div class="gate-copy">
+    <video id="gate-video" src="intro.mp4" muted loop playsinline preload="auto" aria-hidden="true" tabindex="-1"></video>
+    <h1>Lo que no cuadra, <em>no se firma.</em></h1>
+    <p>Valida cada Anexo y Pagaré de factoraje contra la ficha del cliente: nombres, cuentas, fechas, tasa y aritmética, antes de la firma. Sin IA: solo compara datos, y el mismo documento siempre da el mismo resultado.</p>
+  </div>
+  <div class="gate-card">
+    <form id="gate-form" novalidate>
+      <label>Correo <input type="email" id="g-email" autocomplete="email" required></label>
+      <label>Contraseña <span class="pw"><input type="password" id="g-pass" autocomplete="current-password" minlength="6" required><button type="button" id="g-eye" aria-pressed="false" aria-label="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="off" d="M4 4l16 16"/></svg></button></span></label>
+      <button class="go" id="g-go" type="submit">Entrar</button>
+      <div class="err" id="g-err" role="status"></div>
+    </form>
+    <p class="switch" id="g-switch"><span id="g-switch-q">¿Primera vez?</span> <button type="button" id="g-toggle">Crear cuenta</button></p>
+    <p class="fine" id="g-fine">Acceso solo para personal autorizado de Active Leasing.</p>
+  </div>
+</div>
+
 <nav class="nav" aria-label="Secciones">
   <div class="navin">
     <div class="brand">Validador</div>
@@ -153,6 +213,7 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
       <button class="navbtn" type="button" data-view="catalogo">Catálogo</button>
     </div>
     <div class="navnote">Sin IA · solo compara datos</div>
+    <button class="navbtn" id="signout" type="button" hidden>Salir</button>
   </div>
 </nav>
 
