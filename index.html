@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Validador de Anexos y Pagarés</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* Plan: mismo mundo visual que All For One. Fondo piedra, barra con pestañas arriba, portada oscura con título serif,
+   tarjetas de vidrio esmerilado. Una sola cosa por pantalla; el detalle queda plegado. Tema único (claro) a propósito. */
+:root{
+  color-scheme:light;
+  --ground:#EDEBE6; --ink:#111111; --ink-2:#32312F; --muted:#6B6966;
+  --glass:rgba(252,251,248,.72); --glass-strong:rgba(252,251,248,.94); --edge:rgba(255,255,255,.8);
+  --line:rgba(28,27,25,.09); --line-2:rgba(28,27,25,.2);
+  --accent:#7A1420; --fill:#111111; --fill-ink:#FFFFFF;
+  --ok:#256B40; --ok-bg:rgba(37,107,64,.1); --warn:#7E5A08; --warn-bg:rgba(170,130,40,.14); --bad:#8E1B26; --bad-bg:rgba(142,27,38,.09); --idle:#6B6966; --idle-bg:rgba(107,105,102,.11);
+  --shadow:0 2px 6px rgba(20,18,14,.06), 0 28px 70px rgba(20,18,14,.14);
+  --display:"Cormorant Garamond","Cormorant","Garamond","Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
+  --r:10px; --r-card:18px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+/* barra */
+.nav{position:sticky;top:0;z-index:20;background:rgba(250,249,246,.74);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border-bottom:1px solid var(--line)}
+.navin{max-width:1040px;margin:0 auto;padding-inline:24px;display:flex;align-items:stretch;gap:8px 30px;min-height:58px;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:700;font-size:21px;letter-spacing:.01em;display:flex;align-items:center}
+.tabs{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.navbtn{position:relative;background:none;border:0;border-radius:0;padding:0 14px;min-height:44px;font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);white-space:nowrap;cursor:pointer}
+.navbtn::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:2px;background:transparent}
+.navbtn:hover{color:var(--ink)}
+.navbtn[aria-current="page"]{color:var(--ink)} .navbtn[aria-current="page"]::after{background:var(--ink)}
+.navnote{display:flex;align-items:center;font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+@media (max-width:640px){.navnote{display:none}}
+/* portada */
+.phero{position:relative;overflow:hidden;color:#fff;text-align:center;padding:46px 20px 96px;min-height:330px;background:#000;display:flex;flex-direction:column;justify-content:center}
+.phero video{position:absolute;left:0;top:0;width:100%;height:calc(100% - 50px);object-fit:contain;transition:opacity .6s ease}
+.phero.done video{opacity:0}
+.phero .ptxt{position:relative;opacity:0;transform:translateY(8px);transition:opacity .9s ease,transform .9s ease}
+.phero.done .ptxt{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.phero video{display:none}.phero .ptxt{opacity:1;transform:none;transition:none}}
+.phero h1{font-family:var(--display);font-weight:600;font-size:clamp(40px,7vw,68px);line-height:1;margin:0;letter-spacing:.005em;text-wrap:balance}
+.ptag{display:flex;align-items:center;justify-content:center;gap:16px;padding-top:16px;font-size:10px;font-weight:500;letter-spacing:.32em;text-transform:uppercase;color:rgba(255,255,255,.88)}
+.ptag i{display:block;width:40px;height:1px;background:rgba(255,255,255,.6)}
+.pq{font-family:var(--display);font-style:italic;font-size:15px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 22px;color:rgba(255,255,255,.82)}
+/* contenido */
+.wrap{max-width:1040px;margin:-62px auto 0;padding:0 18px 90px;display:flex;flex-direction:column;gap:18px;position:relative}
+.view{display:flex;flex-direction:column;gap:18px}
+.view[hidden]{display:none}
+.card{background:var(--glass);-webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);border:1px solid var(--edge);border-radius:var(--r-card);box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:16px;min-width:0}
+h2{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.1;margin:0;text-wrap:balance}
+h3{font-size:10.5px;margin:0;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.2em}
+.three{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:760px){.three{grid-template-columns:1fr}}
+.tile{background:var(--glass-strong);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0;min-height:150px}
+label.tile{cursor:pointer;border-style:dashed;border-color:var(--line-2);transition:border-color .15s,background .15s}
+label.tile:hover,label.tile.over{border-color:var(--ink);background:#fff}
+label.tile.done{border-style:solid;border-color:rgba(37,107,64,.45)}
+label.dropall{cursor:pointer;border:1.5px dashed var(--line-2);border-radius:16px;padding:34px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;background:var(--glass-strong);transition:border-color .15s,background .15s}
+label.dropall:hover,label.dropall.over{border-color:var(--ink);background:#fff}
+label.dropall:focus-within{outline:2px solid var(--ink);outline-offset:2px}
+label.dropall .big{font-family:var(--display);font-weight:600;font-size:34px;line-height:1.05}
+label.dropall input{position:absolute;opacity:0;width:1px;height:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;background:#fff;border:1px solid var(--line-2);border-radius:999px;padding:3px 4px 3px 11px;font-size:12.5px;cursor:default}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{flex:none;width:22px;height:22px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:15px;line-height:1}
+.chip button:hover{background:var(--bad);color:#fff}
+button.del{align-self:flex-start;margin-top:auto;font-size:12.5px;padding:6px 13px;color:var(--bad);border-color:rgba(142,27,38,.35)}
+button.del:hover{background:var(--bad);color:#fff;border-color:var(--bad)}
+.tile .big{font-family:var(--display);font-weight:600;font-size:24px;line-height:1.1}
+.tile input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+label.tile:focus-within{outline:2px solid var(--ink);outline-offset:2px}
+.status{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.status.good{color:var(--ok)} .status.bad{color:var(--bad)}
+label.f,div.f{display:flex;flex-direction:column;justify-content:flex-end;gap:5px;font-size:12px;color:var(--muted);font-weight:550;min-width:0}
+input,select,textarea{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line-2);border-radius:var(--r);padding:9px 11px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+textarea{resize:vertical;min-height:84px;font-size:13px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+.cli{font-family:var(--display);font-weight:600;font-size:19px;line-height:1.15;color:var(--ink);overflow-wrap:anywhere}
+input[readonly],textarea[readonly]{background:rgba(255,255,255,.55);border-color:var(--line);cursor:default}
+.fields{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.fields .wide{grid-column:1/-1}
+button,.btn{font:inherit;font-size:13.5px;font-weight:600;border-radius:999px;border:1px solid var(--line-2);background:#fff;color:var(--ink);padding:9px 18px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;justify-content:center}
+.btn.primary,button.primary{background:var(--fill);color:var(--fill-ink);border-color:var(--fill)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.sechead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.banner{background:var(--glass-strong);border:1px solid var(--edge);border-left:3px solid var(--warn);border-radius:14px;box-shadow:var(--shadow);padding:12px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;font-size:14px}
+details.fold{border-top:1px solid var(--line);padding-top:14px}
+details.fold>summary{cursor:pointer;font-weight:600;font-size:14px;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::after{content:"+";font-size:20px;font-weight:400;color:var(--muted);line-height:1}
+details.fold[open]>summary::after{content:"–"}
+details.fold>summary span{font-weight:400;color:var(--muted);font-size:13px}
+.foldbody{display:flex;flex-direction:column;gap:14px;padding-top:14px}
+/* resultado */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center}
+@media (max-width:600px){.hero{grid-template-columns:1fr}}
+.ring{width:148px;height:148px;position:relative}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .pct{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:46px;font-weight:600;font-variant-numeric:tabular-nums}
+.verdict{font-family:var(--display);font-size:32px;font-weight:600;line-height:1.08;text-wrap:balance}
+.tone-ok{color:var(--ok)} .tone-warn{color:var(--warn)} .tone-bad{color:var(--bad)} .tone-idle{color:var(--idle)}
+.issues{display:flex;flex-direction:column;gap:10px}
+.issue{background:var(--glass-strong);border:1px solid var(--line);border-left:3px solid var(--bad);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow-wrap:anywhere}
+.issue.review{border-left-color:var(--warn)} .issue.pending{border-left-color:var(--idle)}
+.issue .t{font-weight:650} .issue .where{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;font-size:13.5px}
+@media (max-width:600px){.cmp{grid-template-columns:1fr}}
+.cmp div span{display:block;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+#reportBody{display:flex;flex-direction:column;gap:14px}
+.dtabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
+.dtab{flex:none;font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;background:var(--glass-strong);border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+.dtab span{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.dtab[aria-current="true"]{background:var(--fill);color:var(--fill-ink);border-color:var(--fill)} .dtab[aria-current="true"] span{color:rgba(255,255,255,.75)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+button.sumrow{display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:center;text-align:left;width:100%;border-radius:12px;padding:12px 14px;font-weight:400;font-size:14px;justify-content:stretch}
+button.sumrow:hover{background:#fff}
+.issue.okrow{border-left-color:var(--ok)}
+.sumpct{font-family:var(--display);font-size:32px;font-weight:600;font-variant-numeric:tabular-nums}
+.sumtxt{display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
+.tablebox{overflow-x:auto;border-radius:12px;border:1px solid var(--line);background:var(--glass-strong)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+tr:last-child td{border-bottom:0}
+td.c1{font-weight:600;width:24%} td.c4{width:118px;white-space:nowrap}
+tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:first-child{box-shadow:inset 3px 0 0 var(--warn)} tr.s-pending td:first-child{box-shadow:inset 3px 0 0 var(--idle)}
+.src,.note{display:block;font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;padding:3px 10px;border-radius:999px;font-weight:650;font-size:12px}
+.p-ok,.p-minor{background:var(--ok-bg);color:var(--ok)} .p-review{background:var(--warn-bg);color:var(--warn)} .p-error{background:var(--bad-bg);color:var(--bad)} .p-pending,.p-na{background:var(--idle-bg);color:var(--idle)}
+.empty{color:var(--muted)}
+.ficha{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.mini{background:var(--glass-strong);border:1px solid var(--line);border-radius:14px;padding:13px 15px;font-size:13px;display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}
+.mini b{font-size:14.5px}
+.rules{margin:0;padding-left:18px;font-size:13.5px;display:flex;flex-direction:column;gap:6px}
+@media (prefers-reduced-motion:no-preference){.ring circle.v{transition:stroke-dashoffset .5s ease}}
+</style>
+</head>
+<body>
+<nav class="nav" aria-label="Secciones">
+  <div class="navin">
+    <div class="brand">Validador</div>
+    <div class="tabs">
+      <button class="navbtn" type="button" data-view="validar">Validar</button>
+      <button class="navbtn" type="button" data-view="ficha">Ficha</button>
+      <button class="navbtn" type="button" data-view="catalogo">Catálogo</button>
+    </div>
+    <div class="navnote">Sin IA · solo compara datos</div>
+  </div>
+</nav>
+
+<header class="phero" id="phero">
+  <video id="intro" src="intro.mp4" muted playsinline preload="auto" aria-hidden="true"></video>
+  <div class="ptxt">
+    <p class="pq">Lo que no cuadra, no se firma</p>
+    <h1>Anexos y Pagarés</h1>
+    <div class="ptag"><i></i>Factoraje · Active Leasing<i></i></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="banner" id="demoBanner" hidden>
+    <span>Esto es un ejemplo ficticio con dos errores plantados. Suelta tu Anexo y tu Pagaré para validar una disposición real.</span>
+    <button id="clearDemo" type="button">Empezar en blanco</button>
+  </div>
+
+  <!-- VALIDAR -->
+  <div class="view" id="view-validar">
+    <section class="card" id="needCat" hidden>
+      <h2>Primero carga el catálogo de fichas</h2>
+      <div class="empty">Se hace una sola vez en este navegador.</div>
+      <div class="row"><button class="primary" type="button" data-view="catalogo">Ir a Catálogo</button></div>
+    </section>
+
+    <section class="card">
+      <div class="three">
+        <label class="tile" id="dropAnexo" for="fileAnexo">
+          <h3>Paso 1</h3><div class="big">Anexos</div>
+          <div class="status" id="stAnexo">Suelta aquí uno o varios archivos, o haz clic. PDF, Word, Excel, foto o texto.</div>
+          <div class="chips" id="listAnexo"></div>
+          <input id="fileAnexo" type="file" multiple>
+          <button class="del" id="delAnexo" type="button" hidden>Borrar Anexos</button>
+        </label>
+        <label class="tile" id="dropPagare" for="filePagare">
+          <h3>Paso 2</h3><div class="big">Pagarés</div>
+          <div class="status" id="stPagare">Suelta aquí uno o varios archivos, o haz clic. PDF, Word, Excel, foto o texto.</div>
+          <div class="chips" id="listPagare"></div>
+          <input id="filePagare" type="file" multiple>
+          <button class="del" id="delPagare" type="button" hidden>Borrar Pagarés</button>
+        </label>
+        <div class="tile">
+          <h3>Paso 3</h3>
+          <label class="f">Fecha de firma<input id="fechaFirma" type="date"></label>
+          <div class="f">Cliente<div class="cli" id="cliente">—</div></div>
+          <div class="status" id="clienteHint">Se toma del Anexo y del Pagaré.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="report">
+      <div class="dtabs" id="dtabs" hidden></div>
+      <div id="reportBody"><div class="empty">Suelta el Anexo y el Pagaré para ver el resultado.</div></div>
+
+      <details class="fold" id="dataBox">
+        <summary>Datos leídos de los documentos <span>cifras, fechas y conteos · solo lectura</span></summary>
+        <div class="foldbody">
+          <div class="status">Todo sale directo del Anexo y del Pagaré. No se puede editar aquí: si un dato está mal, se corrige el documento.</div>
+          <h3>Anexo</h3><div class="fields" id="fAnexo"></div>
+          <h3>Pagaré</h3><div class="fields" id="fPagare"></div>
+        </div>
+      </details>
+
+      <details class="fold" id="detailBox">
+        <summary>Detalle completo <span>todos los puntos revisados, uno por uno</span></summary>
+        <div class="foldbody" id="detailBody"></div>
+      </details>
+
+      <div class="row"><button id="copy" type="button">Copiar reporte</button><button id="reset" type="button">Quitar documentos</button></div>
+    </section>
+  </div>
+
+  <!-- FICHA -->
+  <div class="view" id="view-ficha" hidden>
+    <section class="card">
+      <div class="sechead"><h2 id="fichaTitle">Ficha de referencia</h2><span class="status" id="fichaMeta"></span></div>
+      <div class="empty" id="fichaEmpty">Elige un cliente en Validar para ver su ficha.</div>
+      <div class="ficha" id="fichaBody"></div>
+      <div id="fichaRules"></div>
+    </section>
+  </div>
+
+  <!-- CATÁLOGO -->
+  <div class="view" id="view-catalogo" hidden>
+    <section class="card">
+      <h2>Catálogo de fichas</h2>
+      <div class="status" id="catStatus">Sin catálogo cargado.</div>
+      <div class="row">
+        <label class="btn primary" for="catFile">Cargar catálogo (.md)</label>
+        <input id="catFile" type="file" hidden>
+        <button id="catForget" type="button">Quitar catálogo</button>
+      </div>
+      <div class="status">Se guarda solo en este navegador. Cuando cambie una ficha o una tasa, vuelve a cargar el archivo.</div>
+    </section>
+  </div>
+</div>
+
+<script src="lib/pdf.min.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

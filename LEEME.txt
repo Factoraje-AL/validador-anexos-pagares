@@ -1,0 +1,29 @@
+VALIDADOR DE ANEXOS Y PAGARÉS
+=============================
+
+Qué es
+  Un sitio web estático. No tiene servidor ni base de datos: todo corre en el
+  navegador de quien lo usa. Los documentos y el catálogo no salen del equipo.
+
+Cómo publicarlo
+  Sube la carpeta completa, tal cual, a cualquier servicio de sitios estáticos
+  (Vercel, Netlify, Cloudflare Pages, GitHub Pages o un servidor propio).
+  La página de entrada es index.html. Debe servirse por https (o http://localhost);
+  no funciona abriendo index.html con doble clic.
+
+Probarlo en una computadora
+  1. Abre una terminal dentro de esta carpeta.
+  2. Ejecuta:  python3 -m http.server 8000
+  3. Abre http://localhost:8000 en el navegador.
+
+Archivos
+  index.html        página y estilos
+  app.js            interfaz
+  engine.js         reglas de validación y lectura del catálogo
+  intro.mp4         video del logo en la portada
+  lib/              lectores de PDF, Word y OCR (software libre de terceros)
+
+Requiere internet solo para: las tipografías (Google Fonts) y el lector de
+Excel (cdnjs). Todo lo demás va incluido.
+
+El catálogo de fichas NO va incluido: cada usuario lo carga en la pestaña Catálogo.

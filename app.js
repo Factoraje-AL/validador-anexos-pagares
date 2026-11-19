@@ -1,0 +1,444 @@
+/* Interfaz del validador. Toda la lógica de reglas vive en engine.js. */
+(function () {
+  'use strict';
+  const V = window.VAL, $ = id => document.getElementById(id);
+  const esc = s => String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const KEY = 'validador-factoraje-catalogo-v1';
+  const IDLE = 'Suelta aquí uno o varios archivos, o haz clic. PDF, Word, Excel, foto o texto.';
+
+  const ANEXO_FIELDS = [
+    ['fechaInicio', 'Fecha de inicio de disposición', 'date'], ['fechaMax', 'Fecha Máxima de Pago', 'date'], ['plazo', 'Plazo (días)', 'num'],
+    ['valorNominal', 'Valor Nominal (moneda original)', 'money'], ['tipoCambio', 'Tipo de cambio (vacío si es en pesos)', 'num'], ['valorNominalTotal', 'Valor Nominal Total en Pesos', 'money'],
+    ['aforoPct', '% de aforo', 'num'], ['aforo', 'Aforo ($)', 'money'], ['precioBase', 'Precio Base', 'money'],
+    ['tasaPct', 'Tasa de Descuento (% mensual)', 'num'], ['descuento', 'Descuento', 'money'], ['ivaDescuento', 'IVA del Descuento', 'money'],
+    ['comision', 'Comisión por Disposición ($)', 'money'], ['ivaComision', 'IVA de la Comisión', 'money'],
+    ['precioDerechos', 'Precio de los Derechos de Crédito', 'money'], ['pagoRealizar', 'Pago a realizar en la Fecha Máxima', 'money'],
+    ['fechaContratoApendice', 'Fecha del contrato citada en el Apéndice', 'date'], ['numOS', 'Obligados solidarios que aparecen (cuántos)', 'num'],
+    ['facturas', 'Importes de las facturas del Apéndice (uno por línea)', 'area']
+  ];
+  const PAGARE_FIELDS = [['pagareCifra', 'Cifra del Pagaré (en número)', 'money'], ['pagareFecha', 'Fecha del Pagaré', 'date'], ['pagareVence', 'Fecha de vencimiento', 'date'], ['numAvales', 'Avales que trae el Pagaré (cuántos)', 'num']];
+  const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
+
+  /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false };
+
+  /* ---------- campos (solo lectura) ---------- */
+  function buildFields(host, defs) {
+    host.innerHTML = defs.map(([k, label, type]) => type === 'area'
+      ? `<label class="f wide">${esc(label)}<textarea id="f_${k}" readonly tabindex="-1"></textarea></label>`
+      : `<label class="f">${esc(label)}<input id="f_${k}" type="text" readonly tabindex="-1"></label>`).join('');
+  }
+  function showFields(f) {
+    allFields().forEach(([k, , type]) => {
+      const v = f ? f[k] : undefined;
+      $('f_' + k).value = v === null || v === undefined || v === '' ? '' : type === 'money' ? V.money(v).replace('$', '') : type === 'date' ? V.fmtDate(v) : v;
+    });
+  }
+
+  /* ---------- catálogo ---------- */
+  function loadCatalog(text, info, save) {
+    const cat = V.parseCatalog(text);
+    if (!cat.clientes.length) { $('catStatus').className = 'status bad'; $('catStatus').textContent = 'Ese archivo no trae fichas con el formato del catálogo ("## Cliente: ...").'; return false; }
+    state.cat = cat; state.catInfo = info;
+    if (save) { try { localStorage.setItem(KEY, JSON.stringify({ text, info })); } catch (e) { /* sin almacenamiento: se pide de nuevo la próxima vez */ } }
+    $('catStatus').className = 'status good';
+    $('catStatus').textContent = `${cat.clientes.length} fichas cargadas · ${info}`;
+    return true;
+  }
+
+  /* ---------- lectura de archivos (cualquier formato) ---------- */
+  const scripts = {};
+  const loadScript = src => scripts[src] || (scripts[src] = new Promise((ok, no) => {
+    const el = document.createElement('script'); el.src = src; el.onload = ok;
+    el.onerror = () => { delete scripts[src]; no(new Error('No cargó ' + src)); };
+    document.head.appendChild(el);
+  }));
+  const abs = rel => new URL(rel, document.baseURI).href;
+  let ocrWorker = null;
+  async function ocr(image) {
+    await loadScript('lib/ocr/tesseract.min.js');
+    if (!ocrWorker) ocrWorker = await window.Tesseract.createWorker('spa', 1, { workerPath: abs('lib/ocr/ocr-worker.js'), corePath: abs('lib/ocr/'), langPath: abs('lib/ocr'), gzip: false, cacheMethod: 'none', workerBlobURL: false });
+    return (await ocrWorker.recognize(image)).data.text;
+  }
+  const extOf = name => (name.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
+  /* Devuelve { text, how } — how: 'texto' | 'ocr' */
+  async function readAny(file, say) {
+    const ext = extOf(file.name), type = file.type || '';
+    if (ext === 'pdf' || type === 'application/pdf') {
+      if (!window.pdfjsLib) throw new Error('No cargó el lector de PDF.');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+      const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      let text = '';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const tc = await (await pdf.getPage(p)).getTextContent();
+        text += tc.items.map(it => it.str + (it.hasEOL ? '\n' : ' ')).join('') + '\n';
+      }
+      if (text.replace(/\s/g, '').length >= 40) return { text, how: 'texto' };
+      text = '';                                         // PDF escaneado: se lee la imagen de cada página
+      for (let p = 1; p <= pdf.numPages; p++) {
+        say(`${file.name}: es un escaneo, leyendo página ${p} de ${pdf.numPages}…`);
+        const page = await pdf.getPage(p), vp = page.getViewport({ scale: 2 });
+        const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+        text += await ocr(cv) + '\n';
+      }
+      return { text, how: 'ocr' };
+    }
+    if (ext === 'docx') {
+      await loadScript('lib/mammoth.browser.min.js');
+      return { text: (await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value, how: 'texto' };
+    }
+    if (['xlsx', 'xlsm', 'xls', 'ods'].includes(ext)) {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      return { text: wb.SheetNames.map(n => window.XLSX.utils.sheet_to_csv(wb.Sheets[n], { FS: '  ', blankrows: false })).join('\n'), how: 'texto' };
+    }
+    if (type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) {
+      say(`${file.name}: es una imagen, leyendo el texto…`);
+      return { text: await ocr(file), how: 'ocr' };
+    }
+    if (ext === 'doc') throw new Error('El formato .doc antiguo no se puede leer. Guárdalo como .docx o PDF.');
+    let text = await file.text();
+    if ((text.slice(0, 4000).match(/[\u0000-\u0008�]/g) || []).length > 20) throw new Error(`No se puede leer un archivo .${ext || 'sin extensión'}. Guárdalo como PDF.`);
+    if (ext === 'html' || ext === 'htm') text = new DOMParser().parseFromString(text, 'text/html').body.textContent || '';
+    if (ext === 'rtf') text = text.replace(/\\'[0-9a-f]{2}/gi, '').replace(/\{\\\*[^{}]*\}/g, '').replace(/\\[a-z]+-?\d* ?/gi, '').replace(/[{}]/g, '');
+    return { text, how: 'texto' };
+  }
+
+  /* ---------- carga de documentos (varios a la vez) ---------- */
+  const LIST = { Anexo: 'anexos', Pagare: 'pagares' }, WORD = { Anexo: ['Anexo', 'Anexos'], Pagare: ['Pagaré', 'Pagarés'] };
+  function boxStatus(which, problems) {
+    const docs = state[LIST[which]], st = $('st' + which);
+    $('drop' + which).classList.toggle('done', docs.length > 0);
+    $('del' + which).hidden = !docs.length;
+    const ocr = docs.some(d => d.how === 'ocr');
+    st.className = 'status ' + (problems && problems.length ? 'bad' : docs.length ? 'good' : '');
+    st.textContent = (docs.length ? `${docs.length} ${WORD[which][docs.length > 1 ? 1 : 0]} cargado${docs.length > 1 ? 's' : ''}` + (ocr ? ' · alguno se leyó de imagen (OCR)' : '') : IDLE)
+      + (problems && problems.length ? ' · No se pudo leer: ' + problems.join('; ') : '');
+    const host = $('list' + which);
+    host.innerHTML = docs.map((d, i) => `<span class="chip" title="${esc(d.name)}"><span>${esc(d.name)}</span><button type="button" data-i="${i}" aria-label="Quitar ${esc(d.name)}">×</button></span>`).join('');
+    host.querySelectorAll('button').forEach(b => b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (state.demo) leaveDemo(); else { state[LIST[which]].splice(+b.dataset.i, 1); boxStatus(which); }
+      rebuild();
+    }));
+    host.onclick = e => { e.preventDefault(); e.stopPropagation(); };   // tocar una ficha no abre el selector de archivos
+  }
+  async function handleFiles(files, which) {
+    files = Array.from(files || []); if (!files.length) return;
+    if (state.demo) leaveDemo();
+    const st = $('st' + which), problems = [];
+    const say = t => { st.className = 'status'; st.textContent = t; };
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      say(`Leyendo ${i + 1} de ${files.length}: ${file.name}…`);
+      try {
+        const r = await readAny(file, say);
+        if (r.text.replace(/\s/g, '').length < 40) throw new Error('no se encontró texto');
+        if (/^##\s*Cliente:/m.test(r.text)) throw new Error('es el catálogo; cárgalo en la pestaña Catálogo');
+        const list = state[LIST[which]], doc = { name: file.name, text: r.text, how: r.how };
+        const at = list.findIndex(d => d.name === file.name);
+        if (at >= 0) list[at] = doc; else list.push(doc);          // mismo nombre = versión corregida, reemplaza
+      } catch (e) { problems.push(`${file.name} (${e && e.message ? e.message : 'formato no soportado'})`); }
+    }
+    boxStatus(which, problems);
+    rebuild();
+  }
+  function wireDrop(which) {
+    const box = $('drop' + which), inp = $('file' + which);
+    inp.addEventListener('change', () => { handleFiles(inp.files, which).then(() => { inp.value = ''; }); });
+    ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); box.classList.remove('over'); }));
+    box.addEventListener('drop', e => { handleFiles(e.dataTransfer && e.dataTransfer.files, which); });
+  }
+  function wireDelete(which) {
+    $('del' + which).addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();                     // el botón vive dentro de la caja: no debe abrir el selector de archivos
+      if (state.demo) leaveDemo(); else { state[LIST[which]] = []; $('file' + which).value = ''; boxStatus(which); }
+      rebuild();
+    });
+  }
+  // soltar fuera de las cajas no debe abrir el archivo en el navegador
+  ['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
+
+  /* ---------- emparejar cada Anexo con su Pagaré ---------- */
+  const numFromName = n => { const m = n.replace(/\.[a-z0-9]+$/i, '').match(/(\d+)\D*$/); return m ? +m[1] : null; };
+  function rebuild() {
+    const cat = state.cat;
+    const A = state.anexos.map(d => { const m = d.text.match(/A\s?N\s?E\s?X\s?O\s+A?\s*No\.?\s*(\d+)/i); return { d, ci: cat ? V.detectClient(cat, d.text) : -1, ex: V.extractFields(d.text, ''), num: m ? +m[1] : numFromName(d.name) }; });
+    const P = state.pagares.map(d => ({ d, ci: cat ? V.detectClient(cat, d.text) : -1, ex: V.extractFields('', d.text), num: numFromName(d.name) }));
+    const cand = [];
+    A.forEach((a, i) => P.forEach((p, j) => {
+      let s = 0;
+      if (a.ci >= 0 && a.ci === p.ci) s += 4; else if (a.ci >= 0 && p.ci >= 0) s -= 3;
+      if (a.num !== null && a.num === p.num) s += 3;
+      if (a.ex.precioBase !== undefined && p.ex.pagareCifra !== undefined && Math.abs(a.ex.precioBase - p.ex.pagareCifra) < 0.01) s += 3;
+      if (a.ex.fechaMax && a.ex.fechaMax === p.ex.pagareVence) s += 1;
+      if (s >= 3 || (A.length === 1 && P.length === 1)) cand.push({ i, j, s });
+    }));
+    cand.sort((x, y) => y.s - x.s);
+    const usedA = new Set(), usedP = new Set(), pairs = [];
+    const mk = (a, p) => {
+      const ci = a && a.ci >= 0 ? a.ci : p ? p.ci : -1;
+      return { a: a ? a.d : null, p: p ? p.d : null, ci, num: a ? a.num : p.num, fields: Object.assign({}, a ? a.ex : {}, p ? p.ex : {}),
+        clash: a && p && a.ci >= 0 && p.ci >= 0 && a.ci !== p.ci ? `El Anexo es de ${cat.clientes[a.ci].nombre} y el Pagaré parece de ${cat.clientes[p.ci].nombre}.` : '' };
+    };
+    cand.forEach(c => { if (usedA.has(c.i) || usedP.has(c.j)) return; usedA.add(c.i); usedP.add(c.j); pairs.push(mk(A[c.i], P[c.j])); });
+    A.forEach((a, i) => { if (!usedA.has(i)) pairs.push(mk(a, null)); });
+    P.forEach((p, j) => { if (!usedP.has(j)) pairs.push(mk(null, p)); });
+    const nm = x => x.ci >= 0 ? cat.clientes[x.ci].nombre : 'zzz';
+    pairs.sort((x, y) => nm(x).localeCompare(nm(y)) || (x.num || 0) - (y.num || 0));
+    state.pairs = pairs;
+    state.tab = pairs.length > 1 ? 'resumen' : 0;
+    compute(); render();
+  }
+  function compute() {
+    state.pairs.forEach(x => {
+      x.r = state.cat && x.ci >= 0 ? V.validate({ cliente: state.cat.clientes[x.ci], factorante: state.cat.factorante, fechaFirma: $('fechaFirma').value, anexoText: x.a ? x.a.text.trim() : '', pagareText: x.p ? x.p.text.trim() : '', campos: x.fields }) : null;
+    });
+  }
+  const shortName = n => n.replace(/,?\s+S\.?\s?(A\.?(\s?P\.?\s?I\.?)?|\s?DE\s+R\.?\s?L\.?)\s+DE\s+C\.?\s?V\.?$/i, '').replace(/\s+LLC$/i, '');
+  const pairLabel = x => (x.ci >= 0 ? shortName(state.cat.clientes[x.ci].nombre) : 'Cliente no reconocido') + (x.num !== null && x.num !== undefined ? ' · ' + x.num : '');
+  const TONE = { 'correcto': 'ok', 'confirmar': 'warn', 'incompleto': 'idle', 'no-firmable': 'bad' };
+  const verdictText = r => ({
+    'correcto': 'Todo coincide. Listo para firma.',
+    'confirmar': `Sin errores. ${r.reviews} punto${r.reviews > 1 ? 's' : ''} por confirmar.`,
+    'incompleto': `Sin errores hasta ahora. ${r.pending} punto${r.pending > 1 ? 's' : ''} sin revisar.`,
+    'no-firmable': `No firmar. ${r.errors} error${r.errors > 1 ? 'es' : ''} material${r.errors > 1 ? 'es' : ''}.`
+  }[r.veredicto]);
+
+  /* ---------- ficha ---------- */
+  function renderFicha(c) {
+    $('fichaEmpty').hidden = !!c; $('fichaTitle').textContent = c ? c.nombre : 'Ficha de referencia';
+    if (!c) { $('fichaMeta').textContent = ''; $('fichaBody').innerHTML = ''; $('fichaRules').innerHTML = ''; return; }
+    $('fichaMeta').textContent = `Ficha extraída ${c.fechaExtraccion || 's/f'} · tasas vigentes al ${c.tasasVigente || 's/f'}`;
+    const tasas = [30, 60, 90, 120].map(p => `${p} d: ${c.tasas[p] === null || c.tasas[p] === undefined ? 'no autorizado' : c.tasas[p].toFixed(2) + '%'}`).join(' · ');
+    const cu = c.cuenta || {};
+    $('fichaBody').innerHTML = [
+      ['Contrato', `<b>${esc(c.contrato)}</b>firmado el ${esc(V.fmtDate(c.fechaContrato))}`],
+      ['Factorado', `<b>${esc(c.nombre)}</b>${esc(c.rfc ? 'RFC ' + c.rfc : 'Sin RFC mexicano')}<span>${esc(c.domicilio)}</span>`],
+      ...c.os.map(o => [`Obligado solidario · ${o.tipo === 'PM' ? 'persona moral' : 'persona física'}`, `<b>${esc(o.nombre)}</b><span>${esc(o.domicilio)}</span>${o.nota ? '<span class="status">' + esc(o.nota) + '</span>' : ''}`]),
+      ['Firmantes del cliente', `<b>${esc(c.firmantes.join(' y '))}</b>`],
+      ['Tasa de descuento', `<b>${esc(tasas)}</b>`],
+      ['Cuenta del factorado', `<b>${esc(cu.banco || 'No aplica')}</b>Cuenta ${esc(cu.numero || '—')} · Sucursal ${esc(cu.sucursal || '—')}<span>CLABE ${esc(cu.clabe || '—')}</span>`]
+    ].map(([t, h]) => `<div class="mini"><h3>${esc(t)}</h3>${h}</div>`).join('');
+    const rules = c.reglas.concat(c.notaAvales);
+    $('fichaRules').innerHTML = rules.length ? `<h3>Reglas especiales de este cliente (revísalas a mano)</h3><ul class="rules">${rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '';
+  }
+
+  /* ---------- reporte ---------- */
+  const PILL = { ok: '✓ OK', minor: '✓ OK · formato', review: '⚠ Revisar', error: '✗ Error', pending: '… Sin revisar', na: 'No aplica' };
+  const docName = { anexo: 'Anexo', pagare: 'Pagaré', interno: 'Cuentas del Anexo' };
+  function table(rows) {
+    if (!rows.length) return '<div class="empty">Sin puntos en esta sección.</div>';
+    return `<div class="tablebox"><table><thead><tr><th>Campo</th><th>Valor esperado (fuente)</th><th>Encontrado</th><th>Estatus</th></tr></thead><tbody>${rows.map(k =>
+      `<tr class="s-${k.status}"><td class="c1">${esc(k.campo)}</td><td>${esc(k.esperado)}<span class="src">${esc(k.fuente)}</span></td><td>${esc(k.encontrado) || '—'}${k.nota ? `<span class="note">${esc(k.nota)}</span>` : ''}</td><td class="c4"><span class="pill p-${k.status}">${PILL[k.status]}</span></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  const filesLine = x => `Anexo: ${x.a ? esc(x.a.name) : '<b class="tone-bad">falta</b>'} · Pagaré: ${x.p ? esc(x.p.name) : '<b class="tone-bad">falta</b>'}`;
+  function renderTabs() {
+    const host = $('dtabs'), n = state.pairs.length;
+    host.hidden = n < 2;
+    if (n < 2) { host.innerHTML = ''; return; }
+    const btn = (key, label, tone, pct) => `<button type="button" class="dtab" data-tab="${key}"${String(state.tab) === String(key) ? ' aria-current="true"' : ''}>${tone ? `<i class="dot tone-${tone}"></i>` : ''}${esc(label)}${pct !== undefined ? ` <span>${pct}%</span>` : ''}</button>`;
+    host.innerHTML = btn('resumen', `Resumen (${n})`) + state.pairs.map((x, i) => btn(i, pairLabel(x), x.r ? TONE[x.r.veredicto] : 'idle', x.r ? x.r.pct : undefined)).join('');
+    host.querySelectorAll('.dtab').forEach(b => b.addEventListener('click', () => { state.tab = b.dataset.tab === 'resumen' ? 'resumen' : +b.dataset.tab; render(); }));
+  }
+  function render() {
+    const body = $('reportBody'), detail = $('detailBody'), pairs = state.pairs;
+    $('needCat').hidden = !!state.cat;
+    renderTabs();
+    const cur = state.tab === 'resumen' ? null : pairs[state.tab] || null;
+    const c = cur && cur.ci >= 0 && state.cat ? state.cat.clientes[cur.ci] : null;
+    // caja de cliente y pestaña Ficha
+    const first = pairs.find(x => x.ci >= 0), fc = c || (first && state.cat ? state.cat.clientes[first.ci] : null);
+    renderFicha(fc);
+    $('cliente').textContent = !pairs.length ? '—' : cur ? (c ? c.nombre : 'No reconocido') : `${pairs.length} disposiciones`;
+    $('clienteHint').textContent = !state.cat ? 'Carga el catálogo de fichas.' : !pairs.length ? 'Se toma del Anexo y del Pagaré.' : cur ? (c ? 'Contrato ' + c.contrato + ' · tomado de los documentos.' : 'Ningún cliente del catálogo aparece en estos documentos.') : 'Cada una en su pestaña.';
+    const folds = on => { $('dataBox').hidden = !on; $('detailBox').hidden = !on; };
+    if (!pairs.length) { folds(false); detail.innerHTML = ''; showFields(null); body.innerHTML = `<div class="empty">${state.cat ? 'Suelta los Anexos y los Pagarés para ver el resultado. Puedes soltar varios a la vez.' : 'Carga el catálogo de fichas para empezar.'}</div>`; return; }
+
+    if (!cur) {                                                     // ---- Resumen
+      folds(false);
+      const done = pairs.filter(x => x.r), bad = done.filter(x => x.r.veredicto === 'no-firmable').length, ok = done.filter(x => x.r.veredicto === 'correcto').length;
+      body.innerHTML = `<div class="verdict ${bad ? 'tone-bad' : 'tone-ok'}">${pairs.length} disposiciones: ${ok} lista${ok === 1 ? '' : 's'} para firma, ${bad} con errores${pairs.length - ok - bad ? `, ${pairs.length - ok - bad} por revisar` : ''}.</div>
+        <div class="issues">${pairs.map((x, i) => {
+          const tone = x.r ? TONE[x.r.veredicto] : 'idle';
+          return `<button type="button" class="sumrow issue ${tone === 'bad' ? '' : tone === 'warn' ? 'review' : tone === 'ok' ? 'okrow' : 'pending'}" data-tab="${i}">
+            <span class="sumpct tone-${tone}">${x.r ? x.r.pct + '%' : '—'}</span>
+            <span class="sumtxt"><span class="t">${esc(pairLabel(x))}</span><span class="tone-${tone}">${x.r ? esc(verdictText(x.r)) : 'Ningún cliente del catálogo aparece en estos documentos.'}</span><span class="status">${filesLine(x)}</span></span></button>`;
+        }).join('')}</div>`;
+      body.querySelectorAll('.sumrow').forEach(b => b.addEventListener('click', () => { state.tab = +b.dataset.tab; render(); }));
+      return;
+    }
+    showFields(cur.fields);
+    if (!cur.r) { folds(false); detail.innerHTML = ''; body.innerHTML = `<div class="verdict tone-idle">Cliente no reconocido.</div><div>Ningún cliente del catálogo aparece en estos documentos. Revisa que el catálogo esté actualizado.</div><div class="status">${filesLine(cur)}</div>`; return; }
+    folds(true);
+    const r = cur.r, tone = TONE[r.veredicto], C = 2 * Math.PI * 62;
+    const by = d => r.checks.filter(k => k.doc === d);
+    const card = k => `<div class="issue ${k.status}"><div class="where">${docName[k.doc]}</div><div class="t">${esc(k.campo)}</div>${k.status === 'pending' ? `<div class="status">${esc(k.nota)}</div>`
+      : `<div class="cmp"><div><span>Debe decir</span>${esc(k.esperado) || '—'}</div><div><span>Dice</span>${esc(k.encontrado) || '—'}</div></div>${k.nota ? `<div class="status">${esc(k.nota)}</div>` : ''}`}</div>`;
+    const group = (label, st) => { const x = r.checks.filter(k => k.status === st); return x.length ? `<h3>${label}</h3><div class="issues">${x.map(card).join('')}</div>` : ''; };
+    body.innerHTML = `
+      <div class="hero">
+        <div class="ring" role="img" aria-label="${r.pct}% correcto">
+          <svg viewBox="0 0 150 150"><circle cx="75" cy="75" r="62" fill="none" stroke="var(--line)" stroke-width="11"/><circle class="v" cx="75" cy="75" r="62" fill="none" stroke="var(--${tone})" stroke-width="11" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - r.pct / 100)}"/></svg>
+          <div class="pct">${r.pct}%</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div class="verdict tone-${tone}">${esc(verdictText(r))}</div>
+          <div>${r.pct}% correcto: coinciden ${r.correctos} de ${r.evaluados} puntos.</div>
+          <div class="status">${esc(c.nombre)} · contrato ${esc(c.contrato)} · ${filesLine(cur)}</div>
+        </div>
+      </div>
+      ${cur.clash ? `<div class="issue"><div class="where">Documentos</div><div class="t">El Anexo y el Pagaré no son del mismo cliente</div><div class="status">${esc(cur.clash)}</div></div>` : ''}
+      ${group('Corregir antes de firmar', 'error')}${group('Confirmar a ojo', 'review')}${group('No se pudo revisar', 'pending')}`;
+    detail.innerHTML = `<h3>Anexo</h3>${table(by('anexo'))}<h3>Pagaré</h3>${table(by('pagare'))}<h3>Cuentas del Anexo</h3>${table(by('interno'))}`;
+    if (r.pending && !state.dataTouched) $('dataBox').open = true;
+  }
+  function reportOf(x) {
+    const L = [], c = state.cat.clientes[x.ci], r = x.r;
+    L.push(`VALIDACIÓN — ${pairLabel(x)} · ${c.nombre} · contrato ${c.contrato} · firma ${V.fmtDate(V.parseDate($('fechaFirma').value))}`);
+    L.push(`Archivos: Anexo ${x.a ? x.a.name : 'falta'} · Pagaré ${x.p ? x.p.name : 'falta'}`);
+    L.push(`Resultado: ${r.pct}% correcto (${r.correctos} de ${r.evaluados}) · ${r.errors} errores materiales · ${r.reviews} por confirmar · ${r.pending} sin revisar`);
+    [['anexo', 'ANEXO'], ['pagare', 'PAGARÉ'], ['interno', 'VERIFICACIONES INTERNAS']].forEach(([d, t]) => {
+      L.push('', t);
+      r.checks.filter(k => k.doc === d).forEach(k => L.push(`${PILL[k.status]} | ${k.campo} | esperado: ${k.esperado} | encontrado: ${k.encontrado || '—'}${k.nota ? ' | ' + k.nota : ''}`));
+    });
+    return L.join('\n');
+  }
+  function reportText() {
+    const xs = (state.tab === 'resumen' ? state.pairs : [state.pairs[state.tab]]).filter(x => x && x.r);
+    return xs.map(reportOf).join('\n\n==============================\n\n');
+  }
+
+  /* ---------- ejemplo ficticio ---------- */
+  const DEMO_CAT = `## Datos constantes del Factorante
+- **Factorante:** ACTIVE LEASING, S.A. DE C.V.
+- **Apoderado habitual (firmante):** Apoderado de Ejemplo Uno
+- **Cuenta del Factorante** (beneficiario del Pagaré): BANCO · cta. **1234567-8** · CLABE **072180001234567890**
+
+## Cliente: PAPELERA DEMO DEL VALLE, S.A. DE C.V.
+- **Fecha de extracción de la ficha:** 01/11/2026
+- **Número de contrato:** 00999/005
+- **Fecha de firma del contrato:** 3 de marzo de 2026
+### Tasa de descuento (estructura de periodos)
+- **Vigente al:** 01/11/2026
+- 30 días → **2.10%**
+- 60 días → **2.15%**
+- 90 días → **2.20%**
+- 120 días → **no autorizado** para este cliente
+### Factorado / Obligado Solidario Uno
+- Razón social: **PAPELERA DEMO DEL VALLE, S.A. DE C.V.**
+- RFC: **PDV010101AA1**
+- Domicilio: Av. Ficticia Ext. 100, Int. 2, Col. Ejemplo, Toluca, Estado de México, C.P. 50000
+### Obligados Solidarios
+- **Persona moral:** **ENVASES DEMO, S.A. DE C.V.** — RFC **EDE020202BB2** — Calle Inventada 45, Col. Muestra, Toluca, Estado de México, C.P. 50010
+- **Persona física:** **MARIANA EJEMPLO RUIZ** — RFC **EERM800101CC3** — Cerrada del Ensayo 128, Col. Prueba, Metepec, Estado de México, C.P. 52140
+### Firmantes autorizados del cliente
+- MARIANA EJEMPLO RUIZ (Representante Legal)
+### Cuenta del factorado (ejemplo)
+- Banco: **BBVA**
+- No. de cuenta: **0100000001**
+- Sucursal: **1234 Centro Pyme Ejemplo**
+- CLABE: **012180001000000019**
+`;
+  const DEMO_ANEXO = `ANEXO No. 7 (EJEMPLO FICTICIO) del Contrato de Factoraje número 00999/005
+Factorado: PAPELERA DEMO DEL VALLE, S.A. DE C.V.
+Fecha de inicio de disposición: 02/11/2026
+Fecha Máxima de Pago: 17/12/2026
+Plazo: 45 días
+Valor Nominal Total: $500,000.00
+Aforo 10% $50,000.00
+Precio Base: $450,000.00
+Tasa de Descuento: 2.15%
+Descuento: $14,512.50
+IVA del Descuento: $2,322.00
+Precio de los Derechos de Crédito: $433,165.50
+Pago a realizar en la Fecha Máxima de Pago: $450,000.00
+Cuenta del Factorado: Banco BBVA, No. de Cuenta 0100000001, Sucursal 1234 Centro Pyme Ejemplo, CLABE 012180001000000019
+APÉNDICE. Conforme a la cláusula Trigésima Tercera del Contrato de Factoraje de fecha el día 4 de marzo de 2026.
+Firmas: MARIANA EJEMPLO RUIZ, por el Factorado. Apoderado de Ejemplo Uno, por ACTIVE LEASING, S.A. DE C.V.
+"OBLIGADO SOLIDARIO" ENVASES DEMO, S.A. DE C.V.
+"OBLIGADO SOLIDARIO" MARIANA EJEMPLO RUIZ
+TABLA DE FACTURAS
+F-101 $250,000.00
+F-102 $250,000.00`;
+  const DEMO_PAGARE = `PAGARÉ (EJEMPLO FICTICIO) Bueno por $450,000.00
+Este Pagaré se suscribe en Toluca, Estado de México, el día 2 de noviembre de 2026.
+PAPELERA DEMO DEL VALLE, S.A. DE C.V. promete pagar incondicionalmente a la orden de ACTIVE LEASING, S.A. DE C.V. la cantidad de $450,000.00 (CUATROCIENTOS CINCUENTA MIL PESOS 00/100 M.N.), mediante depósito a la cuenta 1234567-8, CLABE 072180001234567890.
+Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEMPLO RUIZ. Domicilio: Avenida Ficticia número 100, interior 2, Colonia Ejemplo, Toluca, Estado de México, C.P. 50000.
+"Aval" ENVASES DEMO, S.A. DE C.V. Domicilio: Calle Inventada 45, Colonia Muestra, Toluca, Estado de México, C.P. 50010.
+"Aval" MARIANA EJEMPLO RUIZ. Domicilio: Cerrada del Ensayo 218, Colonia Prueba, Metepec, Estado de México, C.P. 52140.`;
+  function loadDemo() {
+    state.demo = true; $('demoBanner').hidden = false;
+    loadCatalog(DEMO_CAT, 'catálogo de ejemplo (ficticio)', false);
+    state.anexos = [{ name: 'Anexo de ejemplo (ficticio)', text: DEMO_ANEXO, how: 'texto' }];
+    state.pagares = [{ name: 'Pagaré de ejemplo (ficticio)', text: DEMO_PAGARE, how: 'texto' }];
+    $('fechaFirma').value = '2026-11-02';
+    boxStatus('Anexo'); boxStatus('Pagare'); rebuild();
+  }
+  function resetDocs() {
+    state.anexos = []; state.pagares = [];
+    ['Anexo', 'Pagare'].forEach(w => { $('file' + w).value = ''; boxStatus(w); });
+    $('fechaFirma').value = '';
+  }
+  function leaveDemo() {
+    if (!state.demo) return;
+    state.demo = false; $('demoBanner').hidden = true;
+    resetDocs();
+    if (state.cat && /ficticio/.test(state.catInfo)) { state.cat = null; $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; }
+  }
+
+  /* ---------- pestañas ---------- */
+  const VIEWS = ['validar', 'ficha', 'catalogo'];
+  function show(v) {
+    if (!VIEWS.includes(v)) v = 'validar';
+    VIEWS.forEach(x => { $('view-' + x).hidden = x !== v; });
+    document.querySelectorAll('.navbtn').forEach(b => { if (b.dataset.view === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  }
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { location.hash = b.dataset.view; show(b.dataset.view); }));
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+  $('dataBox').addEventListener('click', e => { if (e.target.closest('summary')) state.dataTouched = true; });
+
+  /* ---------- portada: primero el video del logo, después el título ---------- */
+  (function intro() {
+    const hero = $('phero'), v = $('intro');
+    let shown = false;
+    const showTitle = () => { if (!shown) { shown = true; hero.classList.add('done'); } };
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return showTitle();
+    v.addEventListener('ended', showTitle);
+    v.addEventListener('error', showTitle);
+    const p = v.play(); if (p && p.catch) p.catch(showTitle);
+    setTimeout(showTitle, 6000);               // por si el video no arranca
+  })();
+
+  /* ---------- arranque ---------- */
+  buildFields($('fAnexo'), ANEXO_FIELDS); buildFields($('fPagare'), PAGARE_FIELDS);
+  wireDrop('Anexo'); wireDrop('Pagare'); wireDelete('Anexo'); wireDelete('Pagare');
+  $('fechaFirma').addEventListener('input', () => { compute(); render(); });
+  $('catFile').addEventListener('change', async () => {
+    const f = $('catFile').files[0]; if (!f) return;
+    const text = await f.text();
+    if (state.demo) leaveDemo();
+    if (loadCatalog(text, `${f.name} · cargado el ${new Date().toLocaleDateString('es-MX')}`, true)) { rebuild(); location.hash = 'validar'; show('validar'); }
+    $('catFile').value = '';
+  });
+  $('catForget').addEventListener('click', () => {
+    try { localStorage.removeItem(KEY); } catch (e) { /* nada que borrar */ }
+    state.demo = false; $('demoBanner').hidden = true;
+    state.cat = null; $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; rebuild();
+  });
+  $('clearDemo').addEventListener('click', () => { leaveDemo(); rebuild(); });
+  $('reset').addEventListener('click', () => { if (state.demo) leaveDemo(); else resetDocs(); rebuild(); });
+  $('copy').addEventListener('click', async () => {
+    const b = $('copy'), t = reportText(); if (!t) return;
+    try { await navigator.clipboard.writeText(t); b.textContent = 'Copiado'; } catch (e) { b.textContent = 'No se pudo copiar'; }
+    setTimeout(() => { b.textContent = 'Copiar reporte'; }, 1600);
+  });
+
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
+  if (saved && saved.text && loadCatalog(saved.text, saved.info || 'guardado en este navegador', false)) { boxStatus('Anexo'); boxStatus('Pagare'); rebuild(); }
+  else loadDemo();
+})();
