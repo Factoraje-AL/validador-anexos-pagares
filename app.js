@@ -414,7 +414,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
      Si la fila no trae ficha, se usa la del catálogo cargado en cada computadora (empatada por nombre).
      En vista previa (sin Supabase) todo esto se guarda solo en este navegador. */
   const TBL = 'clientes_guardados', LSK = 'validador-clientes-guardados-v1';
-  const nkey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const nkey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '');   // sin acentos, espacios ni puntos: "S.A. de C.V." = "SA DE CV"
   const lsGet = () => { try { return (JSON.parse(localStorage.getItem(LSK) || '[]') || []).map(r => typeof r === 'string' ? { nombre: r, ficha: null } : r); } catch (e) { return []; } };
   const lsSet = a => { try { localStorage.setItem(LSK, JSON.stringify(a)); } catch (e) { /* sin almacenamiento */ } };
   const store = {
@@ -591,7 +591,8 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   $('edSave').addEventListener('click', async () => {
     const c = edPreview(), msg = $('edMsg'); if (!c || !state.editing) return;
     const antes = state.editing.antes;
-    if (!antes && savedName(c.nombre)) { msg.className = 'status bad'; msg.textContent = 'Ya hay un cliente guardado con ese nombre. Ábrelo y edítalo.'; return; }
+    const otro = savedName(c.nombre);                              // no se permiten clientes duplicados (se compara sin acentos, puntos ni mayúsculas)
+    if (otro && (!antes || nkey(otro) !== nkey(antes))) { msg.className = 'status bad'; msg.textContent = `Ya hay un cliente guardado con ese nombre (${otro}). No se puede duplicar: ábrelo en la lista y edítalo.`; return; }
     msg.className = 'status'; msg.textContent = 'Guardando…'; $('edSave').disabled = true;
     try { await store.save(c.nombre, $('edText').value.trim() + '\n', antes); state.pick = c.nombre; closeEditor(); await refreshSaved(); }
     catch (e) { msg.className = 'status bad'; msg.textContent = storeMsg(e); }
