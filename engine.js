@@ -308,7 +308,7 @@
   function depName(line) {
     const t = stripMd(String(line || '').replace(/^\**(Nombre|Depositarios?|Persona (moral|f[ií]sica)[^:*]*)\**\s*:\**\s*/i, '').split(' — ')[0].replace(/\([^)]*\)/g, ''));
     if (!t || /^(ninguno|no aplica|n\/a|—|-)\b/i.test(t) || /^(RFC|Domicilio)\b/i.test(t)) return [];
-    return t.split(/ y (?=[A-ZÁÉÍÓÚÑ])/).map(x => x.replace(/[.,;]+$/, '').trim()).filter(Boolean);
+    return t.split(/\s*;\s*|\s+\/\s+| y (?=[A-ZÁÉÍÓÚÑ])/).map(x => x.replace(/[.,;]+$/, '').trim()).filter(Boolean);
   }
   /* El Anexo debe nombrar como Depositario a la persona de la ficha ("..., como Depositario" / "en su calidad de Depositario"). */
   function depositariosIn(doc) {
@@ -327,16 +327,20 @@
     }
     return out;
   }
-  function checkDepositario(doc, name) {
-    const exp = tokenize(name).map(k => k.t), found = depositariosIn(doc);
+  // Acepta uno o varios depositarios de la ficha: cada persona que el Anexo nombre "como Depositario" debe ser alguno de ellos.
+  function checkDepositario(doc, names) {
+    names = [].concat(names || []).filter(Boolean);
+    const exps = names.map(n => tokenize(n).map(k => k.t).join(' ')), found = depositariosIn(doc);
     if (!found.length) return { status: 'error', encontrado: '— no aparece —', nota: 'Motivo: el Anexo no nombra a nadie "como Depositario".' };
-    const same = f => f.toks.join(' ') === exp.join(' ');
-    if (found.some(same) && found.every(same)) return { status: 'ok', encontrado: found[0].texto };
-    const bad = found.find(f => !same(f));
-    const nota = found.some(same) ? `El Anexo nombra al Depositario ${found.length} veces y en una dice «${bad.texto}», distinto al de la ficha.`
-      : lev(bad.toks.join(' '), exp.join(' ')) <= 3 ? `El nombre del Depositario está escrito distinto al de la ficha (posible error de ortografía): dice «${bad.texto}».`
-      : `El Anexo nombra como Depositario a «${bad.texto}» y la ficha dice «${name}».`;
-    return { status: 'error', encontrado: bad.texto, nota };
+    const ok = f => exps.includes(f.toks.join(' '));
+    const uniq = xs => [...new Set(xs)];
+    if (found.every(ok)) return { status: 'ok', encontrado: uniq(found.map(f => f.texto)).join(' · ') };
+    const bad = found.find(f => !ok(f)), lista = names.length > 1 ? 'ninguno de los depositarios de la ficha' : 'el de la ficha';
+    const cerca = exps.some(e => lev(bad.toks.join(' '), e) <= 3);
+    const nota = cerca ? `El nombre del Depositario se parece al de la ficha pero está escrito distinto (posible error de ortografía): dice «${bad.texto}».`
+      : found.some(ok) ? `El Anexo nombra al Depositario ${found.length} veces y en una dice «${bad.texto}», que no es ${lista}.`
+      : `El Anexo nombra como Depositario a «${bad.texto}», que no es ${lista}.`;
+    return { status: 'error', encontrado: uniq(found.map(f => f.texto)).join(' · '), nota };
   }
   function parseClient(part) {
     const secs = part.split(/^### /m);
@@ -548,7 +552,7 @@
               : { status: 'ok', encontrado: cu.clabe });
       }
       c.firmantes.forEach(n => add('anexo', 'Firmante del cliente', 'Ficha', n, checkName(A, n)));
-      if ((c.depositarios || []).length) c.depositarios.forEach(n => add('anexo', 'Depositario', 'Ficha', n, checkDepositario(A, n)));
+      if ((c.depositarios || []).length) add('anexo', c.depositarios.length > 1 ? 'Depositario (cualquiera de la ficha)' : 'Depositario', 'Ficha', c.depositarios.join(' / '), checkDepositario(A, c.depositarios));
       else { const d = depositariosIn(A)[0]; add('anexo', 'Depositario', 'Ficha', '— la ficha no lo trae —', { status: 'review', encontrado: d ? d.texto : '— no aparece —', nota: 'La ficha de este cliente no trae Depositario, así que no se pudo comparar. Agrégalo a la ficha (- **Depositario:** NOMBRE) y confírmalo a ojo mientras tanto.' }); }
       if (fa.apoderado) add('anexo', 'Firmante de Active Leasing', 'Ficha', fa.apoderado, checkName(A, fa.apoderado));
     }
