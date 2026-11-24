@@ -512,7 +512,9 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
 
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
-  if (saved && saved.text && loadCatalog(saved.text, saved.info || 'guardado en este navegador', false)) { boxStatus('Anexo'); boxStatus('Pagare'); rebuild(); }
-  else loadDemo();
+  // Sin catálogo guardado se empieza en blanco (ya no se carga el ejemplo ficticio, que confundía:
+  // al quitar un documento del ejemplo desaparecía también su catálogo de ejemplo).
+  if (saved && saved.text) loadCatalog(saved.text, saved.info || 'guardado en este navegador', false);
+  boxStatus('Anexo'); boxStatus('Pagare'); rebuild();
   startAuth();
 })();
