@@ -52,7 +52,8 @@
     return res;
   }
   function makeDoc(raw) {
-    raw = raw || '';
+    // une palabras cortadas con guion al final del renglón: "seis-\ncientos" -> "seiscientos"
+    raw = (raw || '').replace(/([a-záéíóúñü])[-­‐‑]\s+(?=[a-záéíóúñü])/g, '$1');
     return { raw, tokens: tokenize(raw), digits: raw.replace(/(\d)[\s\-](?=\d)/g, '$1') };
   }
   const snippet = (doc, i, j) => {
