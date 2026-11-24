@@ -219,6 +219,7 @@
       ['Factorado', `<b>${esc(c.nombre)}</b>${esc(c.rfc ? 'RFC ' + c.rfc : 'Sin RFC mexicano')}<span>${esc(c.domicilio)}</span>`],
       ...c.os.map(o => [`Obligado solidario · ${o.tipo === 'PM' ? 'persona moral' : 'persona física'}`, `<b>${esc(o.nombre)}</b><span>${esc(o.domicilio)}</span>${o.nota ? '<span class="status">' + esc(o.nota) + '</span>' : ''}`]),
       ['Firmantes del cliente', `<b>${esc(c.firmantes.join(' y '))}</b>`],
+      ['Depositario', `<b>${esc((c.depositarios || []).join(' y ') || 'No viene en la ficha')}</b>`],
       ['Tasa de descuento', `<b>${esc(tasas)}</b>`],
       ['Cuenta del factorado', `<b>${esc(cu.banco || 'No aplica')}</b>Cuenta ${esc(cu.numero || '—')} · Sucursal ${esc(cu.sucursal || '—')}<span>CLABE ${esc(cu.clabe || '—')}</span>`]
     ].map(([t, h]) => `<div class="mini"><h3>${esc(t)}</h3>${h}</div>`).join('');

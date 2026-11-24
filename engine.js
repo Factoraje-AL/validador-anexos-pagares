@@ -304,12 +304,46 @@
     }
     return cat;
   }
+  // nombre(s) de depositario escritos en un renglón de la ficha (sin RFC, domicilio ni notas entre paréntesis)
+  function depName(line) {
+    const t = stripMd(String(line || '').replace(/^\**(Nombre|Depositarios?|Persona (moral|f[ií]sica)[^:*]*)\**\s*:\**\s*/i, '').split(' — ')[0].replace(/\([^)]*\)/g, ''));
+    if (!t || /^(ninguno|no aplica|n\/a|—|-)\b/i.test(t) || /^(RFC|Domicilio)\b/i.test(t)) return [];
+    return t.split(/ y (?=[A-ZÁÉÍÓÚÑ])/).map(x => x.replace(/[.,;]+$/, '').trim()).filter(Boolean);
+  }
+  /* El Anexo debe nombrar como Depositario a la persona de la ficha ("..., como Depositario" / "en su calidad de Depositario"). */
+  function depositariosIn(doc) {
+    const T = doc.tokens, out = [];
+    for (let i = 0; i < T.length; i++) {
+      if (T[i].t !== 'DEPOSITARIO' && T[i].t !== 'DEPOSITARIOS') continue;
+      let e = i - 1;
+      if (e >= 0 && T[e].t === 'COMO') e--;
+      else if (e >= 3 && T[e].t === 'DE' && T[e - 1].t === 'CALIDAD' && T[e - 2].t === 'SU' && T[e - 3].t === 'EN') e -= 4;
+      else continue;                                               // "Depositario" suelto (rótulo de firma, cláusula): no nombra a nadie
+      if (e < 0) continue;
+      // el nombre va desde el separador anterior (coma, punto y coma, " y ") hasta aquí
+      let a = e;
+      while (a > 0 && e - a < 9 && T[a - 1].t !== 'Y' && !/[,;:]/.test(doc.raw.slice(T[a - 1].e, T[a].s)) && !/^(SOLIDARIOS?|FACTORADO|FACTORANTE|UNO)$/.test(T[a - 1].t)) a--;
+      out.push({ a, e, toks: T.slice(a, e + 1).map(k => k.t), texto: snippet(doc, a, e).replace(/[,;]+$/, '') });
+    }
+    return out;
+  }
+  function checkDepositario(doc, name) {
+    const exp = tokenize(name).map(k => k.t), found = depositariosIn(doc);
+    if (!found.length) return { status: 'error', encontrado: '— no aparece —', nota: 'Motivo: el Anexo no nombra a nadie "como Depositario".' };
+    const same = f => f.toks.join(' ') === exp.join(' ');
+    if (found.some(same) && found.every(same)) return { status: 'ok', encontrado: found[0].texto };
+    const bad = found.find(f => !same(f));
+    const nota = found.some(same) ? `El Anexo nombra al Depositario ${found.length} veces y en una dice «${bad.texto}», distinto al de la ficha.`
+      : lev(bad.toks.join(' '), exp.join(' ')) <= 3 ? `El nombre del Depositario está escrito distinto al de la ficha (posible error de ortografía): dice «${bad.texto}».`
+      : `El Anexo nombra como Depositario a «${bad.texto}» y la ficha dice «${name}».`;
+    return { status: 'error', encontrado: bad.texto, nota };
+  }
   function parseClient(part) {
     const secs = part.split(/^### /m);
     const head = secs[0];
     const c = {
       nombre: stripMd(head.split('\n')[0].replace(/^Cliente:\s*/i, '')), raw: part, contrato: '', fechaContrato: null, fechaExtraccion: '',
-      tasas: {}, tasasVigente: '', rfc: '', domicilio: '', os: [], firmantes: [], cuenta: {}, reglas: [], notaAvales: []
+      tasas: {}, tasasVigente: '', rfc: '', domicilio: '', os: [], firmantes: [], cuenta: {}, reglas: [], notaAvales: [], depositarios: []
     };
     let m;
     if ((m = head.match(/\*\*Número de contrato:\*\*\s*(\S+)/))) c.contrato = m[1];
@@ -349,6 +383,8 @@
         for (const l of lines) {
           stripMd(l.replace(/\([^)]*\)/g, '')).split(/ y (?=[A-ZÁÉÍÓÚÑ])/).map(s => s.trim()).filter(Boolean).forEach(n => c.firmantes.push(n));
         }
+      } else if (/^Depositario/i.test(title)) {
+        for (const l of lines) depName(l).forEach(n => c.depositarios.push(n));
       } else if (/^Nota de avales/i.test(title)) c.notaAvales.push(...lines.map(stripMd));
       else if (/^Cuenta del factorado/i.test(title)) {
         c.cuenta.validacion = stripMd(title);
@@ -365,6 +401,8 @@
         }
       }
     }
+    // también se acepta como renglón suelto en cualquier parte de la ficha:  - **Depositario:** NOMBRE
+    if (!c.depositarios.length) for (const l of part.split('\n')) { const k = l.match(/^\s*-\s*\**Depositarios?\**\s*:\**\s*(.+)$/i); if (k) depName(k[1]).forEach(n => c.depositarios.push(n)); }
     return c.contrato || c.os.length ? c : null;
   }
   function detectClient(cat, text) {
@@ -510,6 +548,8 @@
               : { status: 'ok', encontrado: cu.clabe });
       }
       c.firmantes.forEach(n => add('anexo', 'Firmante del cliente', 'Ficha', n, checkName(A, n)));
+      if ((c.depositarios || []).length) c.depositarios.forEach(n => add('anexo', 'Depositario', 'Ficha', n, checkDepositario(A, n)));
+      else { const d = depositariosIn(A)[0]; add('anexo', 'Depositario', 'Ficha', '— la ficha no lo trae —', { status: 'review', encontrado: d ? d.texto : '— no aparece —', nota: 'La ficha de este cliente no trae Depositario, así que no se pudo comparar. Agrégalo a la ficha (- **Depositario:** NOMBRE) y confírmalo a ojo mientras tanto.' }); }
       if (fa.apoderado) add('anexo', 'Firmante de Active Leasing', 'Ficha', fa.apoderado, checkName(A, fa.apoderado));
     }
     const fIni = parseDate(f.fechaInicio), fMax = parseDate(f.fechaMax), fFirma = parseDate(fechaFirma);
@@ -637,7 +677,7 @@
     return { checks, pct, evaluados: ev.length, correctos: count('ok') + minors, errors, reviews, pending, minors, veredicto, anexo: part('anexo'), pagare: part('pagare'), interno: part('interno') };
   }
 
-  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress, checkLetra, checkDigits };
+  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress, checkLetra, checkDigits, checkDepositario, depositariosIn };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.VAL = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
