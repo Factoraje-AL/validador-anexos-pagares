@@ -20,7 +20,7 @@
   const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
 
   /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
-  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null, factText: '' };
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null, factText: '', hist: [], histMsg: '', histQ: '' };
 
   /* ---------- campos (solo lectura) ---------- */
   function buildFields(host, defs) {
@@ -269,6 +269,7 @@
     $('saveCli').hidden = !canSave; $('saveCli').disabled = isSaved; $('saveCli').textContent = isSaved ? 'Cliente guardado' : 'Guardar cliente';
     if (!canSave) $('saveCliMsg').textContent = '';
     renderSaved();
+    scheduleHistory();
     $('cliente').textContent = !pairs.length ? '—' : cur ? (c ? c.nombre : 'No reconocido') : `${pairs.length} disposiciones`;
     $('clienteHint').textContent = !state.cat ? 'Carga el catálogo de fichas.' : !pairs.length ? 'Se toma del Anexo y del Pagaré.' : cur ? (c ? 'Contrato ' + c.contrato + ' · tomado de los documentos.' : 'Ningún cliente del catálogo aparece en estos documentos.') : 'Cada una en su pestaña.';
     const folds = on => { $('dataBox').hidden = !on; $('detailBox').hidden = !on; };
@@ -597,7 +598,81 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     $('edSave').disabled = false;
   });
 
-  const VIEWS = ['validar', 'ficha', 'catalogo'];
+  /* ---------- historial: por cliente, sus Anexos y Pagarés validados (igual en todas las computadoras) ----------
+     Tabla "historial" de Supabase: una fila por disposición (cliente + número de Anexo). Si se vuelve a validar
+     la misma disposición, la fila se actualiza con el último resultado. No se guardan los documentos, solo el resultado. */
+  const HTBL = 'historial', HLSK = 'validador-historial-v1';
+  const hLs = () => { try { return JSON.parse(localStorage.getItem(HLSK) || '[]') || []; } catch (e) { return []; } };
+  const hist = {
+    async list() {
+      if (!authOn) return hLs();
+      const { data, error } = await sb.from(HTBL).select('*').order('validado_el', { ascending: false }).limit(2000);
+      if (error) throw error;
+      return data;
+    },
+    async put(rows) {
+      if (!authOn) { const keep = hLs().filter(r => !rows.some(x => x.clave === r.clave)); try { localStorage.setItem(HLSK, JSON.stringify(rows.concat(keep))); } catch (e) { /* sin almacenamiento */ } return; }
+      const { error } = await sb.from(HTBL).upsert(rows, { onConflict: 'clave' });
+      if (error) throw error;
+    }
+  };
+  const histMsg = e => storeMsg(e).replace(/los clientes guardados/gi, 'el historial').replace('Los el historial todavía no están activados', 'El historial todavía no está activado').replace('para guardar clientes', 'para usar el historial');
+  let histTimer = null, histSent = {}, histWho = '';
+  function histRows() {
+    if (!state.cat) return [];
+    return state.pairs.filter(x => x.r && x.a && x.p && x.ci >= 0).map(x => {
+      const c = state.cat.clientes[x.ci], r = x.r, f = x.fields || {};
+      const num = x.num === null || x.num === undefined ? null : +x.num;
+      return {
+        clave: nkey(c.nombre) + '|' + (num !== null ? 'A' + num : nkey(x.a.name)), cliente: c.nombre, anexo_num: num,
+        anexo_archivo: x.a.name, pagare_archivo: x.p.name, pct: r.pct, veredicto: r.veredicto, resumen: verdictText(r),
+        errores: r.errors, por_confirmar: r.reviews, sin_revisar: r.pending,
+        cifra: V.num(f.pagareCifra), fecha_inicio: V.parseDate(f.fechaInicio) || null, fecha_max: V.parseDate(f.fechaMax) || null,
+        detalle: r.checks.filter(k => k.status === 'error' || k.status === 'review').map(k => ({ doc: k.doc, campo: k.campo, estatus: k.status, nota: k.nota })),
+        validado_por: histWho, validado_el: new Date().toISOString()
+      };
+    });
+  }
+  // se guarda solo, un momento después de validar, y solo si el resultado cambió
+  function scheduleHistory() {
+    if (!storeReady()) return;
+    clearTimeout(histTimer);
+    histTimer = setTimeout(async () => {
+      const sig = r => JSON.stringify([r.pct, r.veredicto, r.errores, r.por_confirmar, r.sin_revisar, r.anexo_archivo, r.pagare_archivo, r.cifra, r.fecha_inicio, r.fecha_max, r.detalle]);
+      const rows = histRows().filter(r => histSent[r.clave] !== sig(r));
+      if (!rows.length) return;
+      try {
+        if (authOn && !histWho) { const s = await sb.auth.getSession(); histWho = (s.data && s.data.session && s.data.session.user.email) || ''; rows.forEach(r => { r.validado_por = histWho; }); }
+        await hist.put(rows); rows.forEach(r => { histSent[r.clave] = sig(r); }); state.histMsg = '';
+        if (location.hash === '#historial') refreshHistory();
+      } catch (e) { state.histMsg = histMsg(e); renderHistory(); }
+    }, 1500);
+  }
+  async function refreshHistory() {
+    if (!storeReady()) return;
+    try { state.hist = await hist.list(); state.histMsg = ''; } catch (e) { state.histMsg = histMsg(e); }
+    renderHistory();
+  }
+  function renderHistory() {
+    const q = nkey(state.histQ), all = state.hist || [];
+    const rows = q ? all.filter(r => nkey(r.cliente + ' ' + (r.anexo_num === null || r.anexo_num === undefined ? '' : 'ANEXO ' + r.anexo_num) + ' ' + r.anexo_archivo + ' ' + r.pagare_archivo).includes(q)) : all;
+    $('histMeta').textContent = state.histMsg || (all.length ? `${all.length} disposici${all.length === 1 ? 'ón' : 'ones'} de ${new Set(all.map(r => nkey(r.cliente))).size} cliente${new Set(all.map(r => nkey(r.cliente))).size === 1 ? '' : 's'}` + (authOn ? '' : ' · vista previa: solo en este navegador') : '');
+    $('histMeta').className = 'status' + (state.histMsg ? ' bad' : '');
+    const groups = {}; rows.forEach(r => { (groups[nkey(r.cliente)] = groups[nkey(r.cliente)] || []).push(r); });
+    const when = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString('es-MX') + ' ' + d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }); };
+    const tone = v => TONE[v] || 'idle';
+    $('histList').innerHTML = Object.keys(groups).sort().map(k => {
+      const g = groups[k].slice().sort((x, y) => (y.anexo_num || 0) - (x.anexo_num || 0) || String(y.validado_el).localeCompare(String(x.validado_el)));
+      return `<section class="card"><div class="sechead"><h2>${esc(g[0].cliente)}</h2><span class="status">${g.length} disposici${g.length === 1 ? 'ón' : 'ones'}</span></div><div class="issues">${g.map(r => {
+        const t = tone(r.veredicto), det = Array.isArray(r.detalle) ? r.detalle : [];
+        return `<details class="issue hrow ${t === 'bad' ? '' : t === 'warn' ? 'review' : t === 'ok' ? 'okrow' : 'pending'}"><summary><span class="sumpct tone-${t}">${r.pct === null || r.pct === undefined ? '—' : r.pct + '%'}</span><span class="sumtxt"><span class="t">${r.anexo_num === null || r.anexo_num === undefined ? 'Anexo y Pagaré' : 'Anexo ' + esc(r.anexo_num) + ' · Pagaré ' + esc(r.anexo_num)}${r.cifra !== null && r.cifra !== undefined ? ' · ' + esc(V.money(+r.cifra)) : ''}</span><span class="tone-${t}">${esc(r.resumen || '')}</span><span class="status">Inicio ${esc(V.fmtDate(r.fecha_inicio))} · Fecha máxima de pago ${esc(V.fmtDate(r.fecha_max))}</span><span class="status">Anexo: ${esc(r.anexo_archivo || '—')} · Pagaré: ${esc(r.pagare_archivo || '—')}</span><span class="status">Validado el ${esc(when(r.validado_el))}${r.validado_por ? ' por ' + esc(r.validado_por) : ''}</span></span></summary>${det.length ? `<ul class="rules">${det.map(d => `<li><b>${esc(docName[d.doc] || '')} · ${esc(d.campo)}</b> (${d.estatus === 'error' ? 'error' : 'por confirmar'})${d.nota ? ': ' + esc(d.nota) : ''}</li>`).join('')}</ul>` : '<div class="status">Sin errores ni puntos por confirmar.</div>'}</details>`;
+      }).join('')}</div></section>`;
+    }).join('') || `<section class="card"><div class="empty">${state.histMsg ? '' : all.length ? 'Nada en el historial coincide con la búsqueda.' : 'Todavía no hay historial. Cada disposición que valides (Anexo con su Pagaré) se guarda aquí sola.'}</div></section>`;
+  }
+  $('histForm').addEventListener('submit', e => { e.preventDefault(); state.histQ = $('histQ').value; renderHistory(); });
+  $('histQ').addEventListener('input', () => { state.histQ = $('histQ').value; renderHistory(); });
+
+  const VIEWS = ['validar', 'ficha', 'historial', 'catalogo'];
   function show(v) {
     if (!VIEWS.includes(v)) v = 'validar';
     VIEWS.forEach(x => { $('view-' + x).hidden = x !== v; });
@@ -675,7 +750,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     if (signup && !(r.data && r.data.session)) return gateMsg('Revisa tu correo para confirmar la cuenta y luego entra.', true);
     $('g-pass').value = ''; enter();
   });
-  function enter() { gate(false); $('signout').hidden = !authOn; refreshSaved(); }
+  function enter() { gate(false); $('signout').hidden = !authOn; refreshSaved(); if (location.hash === '#historial') refreshHistory(); }
   $('signout').addEventListener('click', async () => { try { await sb.auth.signOut(); } catch (e) { /* sin sesión */ } location.reload(); });
   async function startAuth() {
     gateText();
@@ -743,7 +818,8 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   startAuth();
   if (!authOn) refreshSaved();
   // al abrir la pestaña Ficha o volver a la ventana se vuelven a traer, para ver lo que guardaron en otras computadoras
-  const maybeRefresh = () => { if (location.hash === '#ficha') refreshSaved(); };
+  const maybeRefresh = () => { if (location.hash === '#ficha') refreshSaved(); if (location.hash === '#historial') refreshHistory(); };
+  maybeRefresh();
   window.addEventListener('hashchange', maybeRefresh);
   window.addEventListener('focus', maybeRefresh);
 })();
