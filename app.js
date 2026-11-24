@@ -505,9 +505,21 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   $('clearDemo').addEventListener('click', () => { leaveDemo(); rebuild(); });
   $('reset').addEventListener('click', () => { if (state.demo) leaveDemo(); else resetDocs(); rebuild(); });
   $('copy').addEventListener('click', async () => {
-    const b = $('copy'), t = reportText(); if (!t) return;
-    try { await navigator.clipboard.writeText(t); b.textContent = 'Copiado'; } catch (e) { b.textContent = 'No se pudo copiar'; }
-    setTimeout(() => { b.textContent = 'Copiar reporte'; }, 1600);
+    const b = $('copy');
+    const xs = (state.tab === 'resumen' ? state.pairs : [state.pairs[state.tab]]).filter(x => x && x.r);
+    if (!xs.length) return;
+    b.disabled = true; b.textContent = 'Generando PDF…';
+    try {
+      await loadScript('lib/jspdf.umd.min.js'); await loadScript('lib/jspdf.plugin.autotable.min.js');
+      const firma = $('fechaFirma').value ? V.fmtDate(V.parseDate($('fechaFirma').value)) : '';
+      const items = xs.map(x => { const c = state.cat.clientes[x.ci]; return { titulo: pairLabel(x), cliente: c.nombre, contrato: c.contrato, firma, anexo: x.a ? x.a.name : '', pagare: x.p ? x.p.name : '', r: x.r }; });
+      const pdf = window.VALPDF.build(window.jspdf.jsPDF, items, new Date().toLocaleDateString('es-MX'));
+      const name = (xs.length === 1 ? 'Validacion ' + pairLabel(xs[0]) : 'Validacion ' + xs.length + ' disposiciones').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+      pdf.save(name + '.pdf');
+      b.textContent = 'Descargado';
+    } catch (e) { b.textContent = 'No se pudo generar el PDF'; }
+    b.disabled = false;
+    setTimeout(() => { b.textContent = 'Descargar'; }, 1800);
   });
 
   let saved = null;
