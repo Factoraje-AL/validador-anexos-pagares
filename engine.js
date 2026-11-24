@@ -373,6 +373,8 @@
     let m;
     if ((m = head.match(/\*\*Número de contrato:\*\*\s*(\S+)/))) c.contrato = m[1];
     if ((m = head.match(/\*\*Fecha de firma del contrato:\*\*\s*(.+)/))) c.fechaContrato = parseDate(m[1]);
+    // la misma fecha escrita de otra forma: "Fecha del contrato", "Fecha de contrato", "Firma del contrato", "Contrato firmado el", con o sin negritas
+    if (!c.fechaContrato && (m = part.match(/^\s*-?\s*\**\s*(?:Fecha (?:de firma )?(?:del|de) contrato|Fecha de celebraci[oó]n(?: del contrato)?|Firma del contrato|Contrato (?:firmado|celebrado) el)\s*\**\s*:?\s*\**\s*(.+)$/im))) c.fechaContrato = parseDate(stripMd(m[1]));
     if ((m = head.match(/\*\*Fecha de extracción de la ficha:\*\*\s*(.+)/))) c.fechaExtraccion = stripMd(m[1]);
     // vencimiento del contrato:  - **Fecha de vencimiento del contrato:** 3 de marzo de 2027   (también "Vigencia del contrato" o "Vencimiento del contrato")
     if ((m = part.match(/^\s*-\s*\**\s*(?:Fecha de vencimiento del contrato|Vencimiento del contrato|Vigencia del contrato|Fecha de t[eé]rmino del contrato)[^:\n]*:\**\s*(.+)$/im))) c.vencimientoContrato = parseDate(stripMd(m[1]));
