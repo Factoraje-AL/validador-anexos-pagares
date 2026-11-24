@@ -209,7 +209,7 @@
     'correcto': 'Todo coincide. Listo para firma.',
     'confirmar': `Sin errores. ${r.reviews} punto${r.reviews > 1 ? 's' : ''} por confirmar.`,
     'incompleto': `Sin errores hasta ahora. ${r.pending} punto${r.pending > 1 ? 's' : ''} sin revisar.`,
-    'no-firmable': `${r.checks.some(k => /^Contrato vigente/.test(k.campo) && k.status === 'error') ? 'No firmar: el contrato está vencido.' : 'No firmar.'} ${r.errors} error${r.errors > 1 ? 'es' : ''} material${r.errors > 1 ? 'es' : ''}.`
+    'no-firmable': `${r.checks.some(k => /^Contrato vigente/.test(k.campo) && k.status === 'error') ? 'No firmar: el contrato ya venció y no se puede disponer.' : 'No firmar.'} ${r.errors} error${r.errors > 1 ? 'es' : ''} material${r.errors > 1 ? 'es' : ''}.`
   }[r.veredicto]);
 
   /* ---------- ficha ---------- */

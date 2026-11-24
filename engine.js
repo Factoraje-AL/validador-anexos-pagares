@@ -311,7 +311,7 @@
     return t.split(/\s*;\s*|\s+\/\s+| y (?=[A-ZÁÉÍÓÚÑ])/).map(x => x.replace(/[.,;]+$/, '').trim()).filter(Boolean);
   }
   /* Personas que el Anexo nombra "como Depositario(s)" / "en su calidad de Depositario(s)". Devuelve una entrada por persona. */
-  const DEP_STOP = /^(SOLIDARIOS?|FACTORADO|FACTORANTE|UNO|DEPOSITARIOS?|CONTRATO|ENTRE|CELEBRAN|CELEBRADO)$/;
+  const DEP_STOP = /^(SOLIDARIOS?|FACTORADO|FACTORANTE|UNO|UN|DOS|TRES|CUATRO|DEPOSITARIOS?|CONTRATO|ENTRE|CELEBRAN|CELEBRADO)$/;
   const DEP_SUFIJO = /^(S|A|C|V|R|L|SA|CV|RL|SAPI|SAB|SC|AC|SRL|LLC|DE|P|I)$/;
   function depositariosIn(doc) {
     const T = doc.tokens, out = [], seen = new Set();
@@ -587,13 +587,20 @@
       if (fa.apoderado) add('anexo', 'Firmante de Active Leasing', 'Ficha', fa.apoderado, checkName(A, fa.apoderado));
     }
     const fIni = parseDate(f.fechaInicio), fMax = parseDate(f.fechaMax), fFirma = parseDate(fechaFirma);
-    add('anexo', 'Fecha de inicio de disposición', 'Fecha de firma', fmtDate(fFirma), cmpDate(fIni, fFirma, 'fecha de inicio de la disposición'));
-    // el Anexo no puede iniciar después de que venció el contrato
-    add('anexo', 'Contrato vigente (inicio del Anexo vs. vencimiento del contrato)', 'Ficha', c.vencimientoContrato ? 'Contrato vence el ' + fmtDate(c.vencimientoContrato) : '— la ficha no lo trae —',
-      !c.vencimientoContrato ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de firma del contrato, así que no se pudo calcular su vencimiento (12 meses después). Agrégala a la ficha y confírmalo a ojo mientras tanto.' }
-      : !fIni ? pend('fecha de inicio de la disposición')
-      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `No firmar: el contrato está vencido. Difiere por ${dayDiff(c.vencimientoContrato, fIni)} día(s): el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)}${c.vencimientoCalculado ? ' (12 meses después de su firma del ' + fmtDate(c.fechaContrato) + ')' : ''}.` }
-      : { status: 'ok', encontrado: fmtDate(fIni) });
+    // Contrato vencido: la disposición (fecha de firma del Paso 3 o fecha de inicio que trae el Anexo) no puede ser posterior al vencimiento del contrato.
+    const vto = c.vencimientoContrato, vtoTxt = vto ? fmtDate(vto) + (c.vencimientoCalculado ? ' (12 meses después de su firma del ' + fmtDate(c.fechaContrato) + ')' : '') : '';
+    const tarde = d => !!(vto && d && d > vto);
+    // fecha más tardía entre las que se revisan: con esa se cuenta por cuántos días se pasó
+    const vencidoPor = (...ds) => { const late = ds.filter(tarde).sort().pop(); return late ? { fecha: late, dias: dayDiff(vto, late) } : null; };
+    const avisoVencido = (...ds) => { const x = vencidoPor(...ds); return x ? `El contrato ya venció el ${vtoTxt} y no se puede disponer: difiere por ${x.dias} día(s) respecto al ${fmtDate(x.fecha)}.` : ''; };
+    const conAviso = (r, aviso) => aviso ? Object.assign({}, r, { nota: (r.nota ? r.nota + ' ' : '') + 'Además: ' + aviso.charAt(0).toLowerCase() + aviso.slice(1) }) : r;
+    // la validación de siempre (inicio vs. fecha de firma) se conserva; el aviso de contrato vencido es adicional
+    add('anexo', 'Fecha de inicio de disposición', 'Fecha de firma', fmtDate(fFirma), conAviso(cmpDate(fIni, fFirma, 'fecha de inicio de la disposición'), avisoVencido(fFirma, fIni)));
+    add('anexo', 'Contrato vigente (disposición vs. vencimiento del contrato)', 'Ficha', vto ? 'Contrato vence el ' + fmtDate(vto) : '— la ficha no lo trae —',
+      !vto ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de firma del contrato, así que no se pudo calcular su vencimiento (12 meses después). Agrégala a la ficha y confírmalo a ojo mientras tanto.' }
+      : !fIni && !fFirma ? pend('fecha de inicio de la disposición')
+      : vencidoPor(fFirma, fIni) ? { status: 'error', encontrado: [fFirma ? 'Fecha de firma ' + fmtDate(fFirma) : '', fIni ? 'Inicio en el Anexo ' + fmtDate(fIni) : ''].filter(Boolean).join(' · '), nota: 'No firmar. ' + avisoVencido(fFirma, fIni) }
+      : { status: 'ok', encontrado: [fFirma ? 'Fecha de firma ' + fmtDate(fFirma) : '', fIni ? 'Inicio en el Anexo ' + fmtDate(fIni) : ''].filter(Boolean).join(' · ') });
     add('anexo', 'Fecha del contrato citada en el Apéndice', 'Ficha', fmtDate(c.fechaContrato), cmpDate(parseDate(f.fechaContratoApendice), c.fechaContrato, 'fecha del contrato citada en el Apéndice'));
 
     /* ===== VERIFICACIONES INTERNAS ===== */
@@ -660,12 +667,12 @@
       if (cifra === null) add('pagare', 'Cifra en número vs. cifra en letra', 'Mismo Pagaré', '—', pend('cifra del Pagaré'));
       else { const r = checkLetra(P, cifra); add('pagare', 'Cifra en número vs. cifra en letra', 'Mismo Pagaré', r.esperado, r); }
     }
-    add('pagare', 'Fecha del Pagaré', 'Fecha de firma', fmtDate(fFirma), cmpDate(parseDate(f.pagareFecha), fFirma, 'fecha del Pagaré'));
-    { // el Pagaré tampoco puede tener fecha posterior al vencimiento del contrato
-      const fp = parseDate(f.pagareFecha), v = c.vencimientoContrato;
-      if (v && fp) add('pagare', 'Contrato vigente (fecha del Pagaré vs. vencimiento del contrato)', 'Ficha', 'Contrato vence el ' + fmtDate(v),
-        fp > v ? { status: 'error', encontrado: fmtDate(fp), nota: `No firmar: el contrato está vencido. Difiere por ${dayDiff(v, fp)} día(s): el Pagaré tiene fecha ${fmtDate(fp)} y el contrato venció el ${fmtDate(v)}${c.vencimientoCalculado ? ' (12 meses después de su firma del ' + fmtDate(c.fechaContrato) + ')' : ''}.` }
-        : { status: 'ok', encontrado: fmtDate(fp) });
+    { // igual para el Pagaré: se conserva su validación y el aviso de contrato vencido es adicional
+      const fp = parseDate(f.pagareFecha);
+      add('pagare', 'Fecha del Pagaré', 'Fecha de firma', fmtDate(fFirma), conAviso(cmpDate(fp, fFirma, 'fecha del Pagaré'), avisoVencido(fFirma, fp)));
+      if (vto && (fp || fFirma)) add('pagare', 'Contrato vigente (Pagaré vs. vencimiento del contrato)', 'Ficha', 'Contrato vence el ' + fmtDate(vto),
+        vencidoPor(fFirma, fp) ? { status: 'error', encontrado: [fFirma ? 'Fecha de firma ' + fmtDate(fFirma) : '', fp ? 'Fecha del Pagaré ' + fmtDate(fp) : ''].filter(Boolean).join(' · '), nota: 'No firmar. ' + avisoVencido(fFirma, fp) }
+        : { status: 'ok', encontrado: [fFirma ? 'Fecha de firma ' + fmtDate(fFirma) : '', fp ? 'Fecha del Pagaré ' + fmtDate(fp) : ''].filter(Boolean).join(' · ') });
     }
     { // la fecha del Pagaré debe ser la misma que la del Anexo
       const fp = parseDate(f.pagareFecha);
