@@ -420,7 +420,7 @@
       const dateAfter = re => { const m = re.exec(F); return m ? parseDate(m[1]) : null; };
       const m = F.match(/\$\s*([\d,]+\.\d{2})/); if (m) out.pagareCifra = num(m[1]);
       const d = dateAfter(new RegExp('SE SUSCRIBE[\\s\\S]{0,80}?EL DIA\\s+' + DT)); if (d) out.pagareFecha = d;
-      const v = dateAfter(new RegExp('A MAS TARDAR\\s+EL DIA\\s+' + DT)); if (v) out.pagareVence = v;
+      const v = dateAfter(new RegExp('A\\s+MAS\\s+TARDAR\\s+EL\\s+DIA\\s+' + DT)); if (v) out.pagareVence = v;
       const av = F.match(/["“”]\s*AVAL(?:ES)?\b[^"“”\n]*["“”]/g); if (av) out.numAvales = av.length;
     }
     return out;
@@ -581,6 +581,13 @@
       else { const r = checkLetra(P, cifra); add('pagare', 'Cifra en número vs. cifra en letra', 'Mismo Pagaré', r.esperado, r); }
     }
     add('pagare', 'Fecha del Pagaré', 'Fecha de firma', fmtDate(fFirma), cmpDate(parseDate(f.pagareFecha), fFirma, 'fecha del Pagaré'));
+    { // la fecha del Pagaré debe ser la misma que la del Anexo
+      const fp = parseDate(f.pagareFecha);
+      add('pagare', 'Fecha del Pagaré vs. fecha del Anexo', 'Anexo', fmtDate(fIni),
+        !fp ? pend('fecha del Pagaré') : !fIni ? { status: 'pending', encontrado: fmtDate(fp), nota: 'No se pudo leer la fecha del Anexo para compararla.' }
+        : fp === fIni ? { status: 'ok', encontrado: fmtDate(fp) }
+        : { status: 'error', encontrado: fmtDate(fp), nota: `El Pagaré tiene fecha ${fmtDate(fp)} y el Anexo ${fmtDate(fIni)}: difieren por ${Math.abs(dayDiff(fIni, fp))} día(s). Deben ser la misma.` });
+    }
     if (parseDate(f.pagareVence) && fMax) add('pagare', 'Fecha de vencimiento vs. Fecha Máxima de Pago', 'Anexo', fmtDate(fMax), cmpDate(parseDate(f.pagareVence), fMax, 'fecha de vencimiento'));
     if (P) {
       c.firmantes.forEach(n => add('pagare', 'Firmante del suscriptor', 'Ficha', n, checkName(P, n)));
