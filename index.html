@@ -182,7 +182,16 @@ button.saved span{font-weight:400;font-size:12px;color:var(--muted)}
 button.saved:hover{background:#fff}
 button.saved[aria-current="true"]{border-color:var(--ink);background:#fff}
 #saveCli{align-self:flex-start}
-details.hrow>summary{cursor:pointer;list-style:none;display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:center}
+details.hrow>summary{cursor:pointer;list-style:none;display:grid;grid-template-columns:86px 1fr auto;gap:14px;align-items:center}
+@media (max-width:600px){details.hrow>summary{grid-template-columns:70px 1fr}details.hrow>summary .hdl{grid-column:1/-1;justify-self:start}}
+details.hcli{display:block}
+details.hcli>.issues{margin-top:16px}
+details.hcli>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+details.hcli>summary::-webkit-details-marker{display:none}
+details.hcli>summary .hname{font-family:var(--display);font-weight:600;font-size:22px;line-height:1.15;overflow-wrap:anywhere}
+details.hcli>summary .hname::before{content:"+";display:inline-block;width:20px;font-family:inherit;font-weight:400;color:var(--muted)}
+details.hcli[open]>summary .hname::before{content:"–"}
+details.hcli[open]>summary{padding-bottom:4px}
 details.hrow>summary::-webkit-details-marker{display:none}
 details.hrow[open]>summary{padding-bottom:8px;border-bottom:1px solid var(--line)}
 .edbox{display:flex;flex-direction:column;gap:12px;background:var(--glass-strong);border:1px solid var(--line);border-radius:14px;padding:16px}
@@ -339,7 +348,7 @@ details.hrow[open]>summary{padding-bottom:8px;border-bottom:1px solid var(--line
   <div class="view" id="view-historial" hidden>
     <section class="card">
       <div class="sechead"><h2>Historial</h2><span class="status" id="histMeta"></span></div>
-      <div class="status">Cada cliente con sus Anexos y Pagarés validados. Se guarda solo al validar y se ve en todas las computadoras. Toca una disposición para ver sus errores.</div>
+      <div class="status">Cada cliente con sus Anexos y Pagarés validados. Se guarda solo al validar y se ve en todas las computadoras. Toca el nombre de un cliente para ver sus Anexos y Pagarés; cada uno se puede descargar en PDF.</div>
       <form class="row" id="histForm" role="search">
         <input id="histQ" type="search" placeholder="Buscar por cliente, número de Anexo o archivo" aria-label="Buscar en el historial" style="flex:1 1 220px;width:auto">
         <button class="primary" type="submit">Buscar</button>
@@ -366,6 +375,6 @@ details.hrow[open]>summary{padding-bottom:8px;border-bottom:1px solid var(--line
 <script src="lib/pdf.min.js"></script>
 <script src="engine.js?v=14"></script>
 <script src="pdf-report.js?v=1"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@
   const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
 
   /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
-  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null, factText: '', hist: [], histMsg: '', histQ: '' };
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null, factText: '', hist: [], histMsg: '', histQ: '', histOpen: {} };
 
   /* ---------- campos (solo lectura) ---------- */
   function buildFields(host, defs) {
@@ -627,7 +627,8 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
       return {
         clave: nkey(c.nombre) + '|' + (num !== null ? 'A' + num : nkey(x.a.name)), cliente: c.nombre, anexo_num: num,
         anexo_archivo: x.a.name, pagare_archivo: x.p.name, pct: r.pct, veredicto: r.veredicto, resumen: verdictText(r),
-        errores: r.errors, por_confirmar: r.reviews, sin_revisar: r.pending,
+        errores: r.errors, por_confirmar: r.reviews, sin_revisar: r.pending, correctos: r.correctos, evaluados: r.evaluados, contrato: c.contrato,
+        checks: r.checks.map(k => ({ doc: k.doc, campo: k.campo, fuente: k.fuente, esperado: k.esperado, encontrado: k.encontrado, status: k.status, nota: k.nota })),
         cifra: V.num(f.pagareCifra), fecha_inicio: V.parseDate(f.fechaInicio) || null, fecha_max: V.parseDate(f.fechaMax) || null,
         detalle: r.checks.filter(k => k.status === 'error' || k.status === 'review').map(k => ({ doc: k.doc, campo: k.campo, estatus: k.status, nota: k.nota })),
         validado_por: histWho, validado_el: new Date().toISOString()
@@ -639,7 +640,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     if (!storeReady()) return;
     clearTimeout(histTimer);
     histTimer = setTimeout(async () => {
-      const sig = r => JSON.stringify([r.pct, r.veredicto, r.errores, r.por_confirmar, r.sin_revisar, r.anexo_archivo, r.pagare_archivo, r.cifra, r.fecha_inicio, r.fecha_max, r.detalle]);
+      const sig = r => JSON.stringify([r.pct, r.veredicto, r.errores, r.por_confirmar, r.sin_revisar, r.anexo_archivo, r.pagare_archivo, r.cifra, r.fecha_inicio, r.fecha_max, r.checks]);
       const rows = histRows().filter(r => histSent[r.clave] !== sig(r));
       if (!rows.length) return;
       try {
@@ -654,21 +655,38 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     try { state.hist = await hist.list(); state.histMsg = ''; } catch (e) { state.histMsg = histMsg(e); }
     renderHistory();
   }
+  // el PDF del historial sale de lo que se guardó al validar (mismo formato que Descargar en Validar)
+  function histItem(r) {
+    const checks = Array.isArray(r.checks) && r.checks.length ? r.checks : (Array.isArray(r.detalle) ? r.detalle : []).map(d => ({ doc: d.doc, campo: d.campo, fuente: '', esperado: '', encontrado: '', status: d.estatus, nota: d.nota }));
+    const d = new Date(r.validado_el);
+    return { titulo: (r.anexo_num === null || r.anexo_num === undefined ? 'Anexo y Pagaré' : 'Anexo ' + r.anexo_num) + (isNaN(d) ? '' : ' · validado el ' + d.toLocaleDateString('es-MX')), cliente: r.cliente, contrato: r.contrato || '', firma: '',
+      anexo: r.anexo_archivo || '', pagare: r.pagare_archivo || '', r: { pct: r.pct, correctos: r.correctos === null || r.correctos === undefined ? '—' : r.correctos, evaluados: r.evaluados === null || r.evaluados === undefined ? '—' : r.evaluados, errors: r.errores, reviews: r.por_confirmar, pending: r.sin_revisar, checks } };
+  }
   function renderHistory() {
     const q = nkey(state.histQ), all = state.hist || [];
-    const rows = q ? all.filter(r => nkey(r.cliente + ' ' + (r.anexo_num === null || r.anexo_num === undefined ? '' : 'ANEXO ' + r.anexo_num) + ' ' + r.anexo_archivo + ' ' + r.pagare_archivo).includes(q)) : all;
-    $('histMeta').textContent = state.histMsg || (all.length ? `${all.length} disposici${all.length === 1 ? 'ón' : 'ones'} de ${new Set(all.map(r => nkey(r.cliente))).size} cliente${new Set(all.map(r => nkey(r.cliente))).size === 1 ? '' : 's'}` + (authOn ? '' : ' · vista previa: solo en este navegador') : '');
+    const rows = q ? all.filter(r => nkey(r.cliente + ' ' + (r.anexo_num === null || r.anexo_num === undefined ? '' : 'ANEXO ' + r.anexo_num + ' PAGARE ' + r.anexo_num) + ' ' + r.anexo_archivo + ' ' + r.pagare_archivo).includes(q)) : all;
+    const nCli = new Set(all.map(r => nkey(r.cliente))).size;
+    $('histMeta').textContent = state.histMsg || (all.length ? `${nCli} cliente${nCli === 1 ? '' : 's'} · ${all.length} disposici${all.length === 1 ? 'ón' : 'ones'}` + (authOn ? '' : ' · vista previa: solo en este navegador') : '');
     $('histMeta').className = 'status' + (state.histMsg ? ' bad' : '');
     const groups = {}; rows.forEach(r => { (groups[nkey(r.cliente)] = groups[nkey(r.cliente)] || []).push(r); });
     const when = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString('es-MX') + ' ' + d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }); };
     const tone = v => TONE[v] || 'idle';
-    $('histList').innerHTML = Object.keys(groups).sort().map(k => {
+    const keys = Object.keys(groups).sort(), shown = [];
+    $('histList').innerHTML = keys.map(k => {
       const g = groups[k].slice().sort((x, y) => (y.anexo_num || 0) - (x.anexo_num || 0) || String(y.validado_el).localeCompare(String(x.validado_el)));
-      return `<section class="card"><div class="sechead"><h2>${esc(g[0].cliente)}</h2><span class="status">${g.length} disposici${g.length === 1 ? 'ón' : 'ones'}</span></div><div class="issues">${g.map(r => {
-        const t = tone(r.veredicto), det = Array.isArray(r.detalle) ? r.detalle : [];
-        return `<details class="issue hrow ${t === 'bad' ? '' : t === 'warn' ? 'review' : t === 'ok' ? 'okrow' : 'pending'}"><summary><span class="sumpct tone-${t}">${r.pct === null || r.pct === undefined ? '—' : r.pct + '%'}</span><span class="sumtxt"><span class="t">${r.anexo_num === null || r.anexo_num === undefined ? 'Anexo y Pagaré' : 'Anexo ' + esc(r.anexo_num) + ' · Pagaré ' + esc(r.anexo_num)}${r.cifra !== null && r.cifra !== undefined ? ' · ' + esc(V.money(+r.cifra)) : ''}</span><span class="tone-${t}">${esc(r.resumen || '')}</span><span class="status">Inicio ${esc(V.fmtDate(r.fecha_inicio))} · Fecha máxima de pago ${esc(V.fmtDate(r.fecha_max))}</span><span class="status">Anexo: ${esc(r.anexo_archivo || '—')} · Pagaré: ${esc(r.pagare_archivo || '—')}</span><span class="status">Validado el ${esc(when(r.validado_el))}${r.validado_por ? ' por ' + esc(r.validado_por) : ''}</span></span></summary>${det.length ? `<ul class="rules">${det.map(d => `<li><b>${esc(docName[d.doc] || '')} · ${esc(d.campo)}</b> (${d.estatus === 'error' ? 'error' : 'por confirmar'})${d.nota ? ': ' + esc(d.nota) : ''}</li>`).join('')}</ul>` : '<div class="status">Sin errores ni puntos por confirmar.</div>'}</details>`;
-      }).join('')}</div></section>`;
+      const bad = g.filter(r => r.veredicto === 'no-firmable').length, ok = g.filter(r => r.veredicto === 'correcto').length;
+      // cada cliente es una caja cerrada: sus Anexos y Pagarés quedan adentro y se abren al tocar el nombre
+      return `<details class="card hcli" data-k="${esc(k)}"${state.histOpen[k] || (q && keys.length <= 3) ? ' open' : ''}><summary><span class="hname">${esc(g[0].cliente)}</span><span class="status">${g.length} disposici${g.length === 1 ? 'ón' : 'ones'}${ok ? ` · <b class="tone-ok">${ok} lista${ok === 1 ? '' : 's'}</b>` : ''}${bad ? ` · <b class="tone-bad">${bad} con errores</b>` : ''}</span></summary><div class="issues">${g.map(r => {
+        const t = tone(r.veredicto), det = Array.isArray(r.detalle) ? r.detalle : [], i = shown.push(r) - 1;
+        return `<details class="issue hrow ${t === 'bad' ? '' : t === 'warn' ? 'review' : t === 'ok' ? 'okrow' : 'pending'}"><summary><span class="sumpct tone-${t}">${r.pct === null || r.pct === undefined ? '—' : r.pct + '%'}</span><span class="sumtxt"><span class="t">${r.anexo_num === null || r.anexo_num === undefined ? 'Anexo y Pagaré' : 'Anexo ' + esc(r.anexo_num) + ' · Pagaré ' + esc(r.anexo_num)}${r.cifra !== null && r.cifra !== undefined ? ' · ' + esc(V.money(+r.cifra)) : ''}</span><span class="tone-${t}">${esc(r.resumen || '')}</span><span class="status">Inicio ${esc(V.fmtDate(r.fecha_inicio))} · Fecha máxima de pago ${esc(V.fmtDate(r.fecha_max))}</span><span class="status">Anexo: ${esc(r.anexo_archivo || '—')} · Pagaré: ${esc(r.pagare_archivo || '—')}</span><span class="status">Validado el ${esc(when(r.validado_el))}${r.validado_por ? ' por ' + esc(r.validado_por) : ''}</span></span><button type="button" class="hdl" data-i="${i}">Descargar</button></summary>${det.length ? `<ul class="rules">${det.map(d => `<li><b>${esc(docName[d.doc] || '')} · ${esc(d.campo)}</b> (${d.estatus === 'error' ? 'error' : 'por confirmar'})${d.nota ? ': ' + esc(d.nota) : ''}</li>`).join('')}</ul>` : '<div class="status">Sin errores ni puntos por confirmar.</div>'}</details>`;
+      }).join('')}</div></details>`;
     }).join('') || `<section class="card"><div class="empty">${state.histMsg ? '' : all.length ? 'Nada en el historial coincide con la búsqueda.' : 'Todavía no hay historial. Cada disposición que valides (Anexo con su Pagaré) se guarda aquí sola.'}</div></section>`;
+    $('histList').querySelectorAll('details.hcli').forEach(d => d.addEventListener('toggle', () => { state.histOpen[d.dataset.k] = d.open; }));
+    $('histList').querySelectorAll('button.hdl').forEach(b => b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();                     // el botón vive dentro del renglón: no debe abrirlo ni cerrarlo
+      const r = shown[+b.dataset.i];
+      downloadPdf([histItem(r)], 'Validacion ' + shortName(r.cliente) + (r.anexo_num === null || r.anexo_num === undefined ? '' : ' ' + r.anexo_num), b, 'Descargar');
+    }));
   }
   $('histForm').addEventListener('submit', e => { e.preventDefault(); state.histQ = $('histQ').value; renderHistory(); });
   $('histQ').addEventListener('input', () => { state.histQ = $('histQ').value; renderHistory(); });
@@ -792,22 +810,24 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   });
   $('clearDemo').addEventListener('click', () => { leaveDemo(); rebuild(); });
   $('reset').addEventListener('click', () => { if (state.demo) leaveDemo(); else resetDocs(); rebuild(); });
-  $('copy').addEventListener('click', async () => {
-    const b = $('copy');
-    const xs = (state.tab === 'resumen' ? state.pairs : [state.pairs[state.tab]]).filter(x => x && x.r);
-    if (!xs.length) return;
+  // genera y descarga el PDF del "Detalle completo" (lo usan Validar e Historial)
+  async function downloadPdf(items, name, b, label) {
+    if (!items.length) return;
     b.disabled = true; b.textContent = 'Generando PDF…';
     try {
       await loadScript('lib/jspdf.umd.min.js'); await loadScript('lib/jspdf.plugin.autotable.min.js');
-      const firma = $('fechaFirma').value ? V.fmtDate(V.parseDate($('fechaFirma').value)) : '';
-      const items = xs.map(x => { const c = state.cat.clientes[x.ci]; return { titulo: pairLabel(x), cliente: c.nombre, contrato: c.contrato, firma, anexo: x.a ? x.a.name : '', pagare: x.p ? x.p.name : '', r: x.r }; });
       const pdf = window.VALPDF.build(window.jspdf.jsPDF, items, new Date().toLocaleDateString('es-MX'));
-      const name = (xs.length === 1 ? 'Validacion ' + pairLabel(xs[0]) : 'Validacion ' + xs.length + ' disposiciones').replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
-      pdf.save(name + '.pdf');
+      pdf.save(name.replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ ]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf');
       b.textContent = 'Descargado';
     } catch (e) { b.textContent = 'No se pudo generar el PDF'; }
     b.disabled = false;
-    setTimeout(() => { b.textContent = 'Descargar'; }, 1800);
+    setTimeout(() => { b.textContent = label; }, 1800);
+  }
+  $('copy').addEventListener('click', () => {
+    const xs = (state.tab === 'resumen' ? state.pairs : [state.pairs[state.tab]]).filter(x => x && x.r);
+    const firma = $('fechaFirma').value ? V.fmtDate(V.parseDate($('fechaFirma').value)) : '';
+    const items = xs.map(x => { const c = state.cat.clientes[x.ci]; return { titulo: pairLabel(x), cliente: c.nombre, contrato: c.contrato, firma, anexo: x.a ? x.a.name : '', pagare: x.p ? x.p.name : '', r: x.r }; });
+    downloadPdf(items, xs.length === 1 ? 'Validacion ' + pairLabel(xs[0]) : 'Validacion ' + xs.length + ' disposiciones', $('copy'), 'Descargar');
   });
 
   let saved = null;
