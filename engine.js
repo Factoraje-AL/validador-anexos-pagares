@@ -638,6 +638,12 @@
       else { const r = checkLetra(P, cifra); add('pagare', 'Cifra en número vs. cifra en letra', 'Mismo Pagaré', r.esperado, r); }
     }
     add('pagare', 'Fecha del Pagaré', 'Fecha de firma', fmtDate(fFirma), cmpDate(parseDate(f.pagareFecha), fFirma, 'fecha del Pagaré'));
+    { // el Pagaré tampoco puede tener fecha posterior al vencimiento del contrato
+      const fp = parseDate(f.pagareFecha), v = c.vencimientoContrato;
+      if (v && fp) add('pagare', 'Contrato vigente a la fecha del Pagaré', 'Ficha', 'Fecha a más tardar el ' + fmtDate(v),
+        fp > v ? { status: 'error', encontrado: fmtDate(fp), nota: `Contrato vencido, no firmar: el Pagaré tiene fecha ${fmtDate(fp)} y el contrato venció el ${fmtDate(v)}${c.vencimientoCalculado ? ', 12 meses después de su firma del ' + fmtDate(c.fechaContrato) : ''} (${dayDiff(v, fp)} día(s) después del vencimiento).` }
+        : { status: 'ok', encontrado: fmtDate(fp) });
+    }
     { // la fecha del Pagaré debe ser la misma que la del Anexo
       const fp = parseDate(f.pagareFecha);
       add('pagare', 'Fecha del Pagaré vs. fecha del Anexo', 'Anexo', fmtDate(fIni),
