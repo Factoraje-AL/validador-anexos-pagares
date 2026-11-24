@@ -20,7 +20,7 @@
   const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
 
   /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
-  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false };
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], savedMsg: '', savedQ: '', pick: null };
 
   /* ---------- campos (solo lectura) ---------- */
   function buildFields(host, defs) {
@@ -251,7 +251,15 @@
     const c = cur && cur.ci >= 0 && state.cat ? state.cat.clientes[cur.ci] : null;
     // caja de cliente y pestaña Ficha
     const first = pairs.find(x => x.ci >= 0), fc = c || (first && state.cat ? state.cat.clientes[first.ci] : null);
-    renderFicha(fc);
+    const picked = state.pick && state.cat ? state.cat.clientes.find(k => nkey(k.nombre) === nkey(state.pick)) : null;
+    renderFicha(state.pick ? picked || null : fc);
+    if (state.pick && !picked) { $('fichaTitle').textContent = state.pick; $('fichaEmpty').textContent = state.cat ? 'Este cliente está guardado, pero el catálogo cargado en esta computadora no trae su ficha. Carga el catálogo actualizado en la pestaña Catálogo.' : 'Carga el catálogo de fichas en esta computadora para ver la ficha de este cliente.'; }
+    else $('fichaEmpty').textContent = 'Valida una disposición o elige un cliente guardado para ver su ficha.';
+    $('savedDrop').hidden = !state.pick;
+    const canSave = !!c, isSaved = canSave && state.saved.some(n => nkey(n) === nkey(c.nombre));
+    $('saveCli').hidden = !canSave; $('saveCli').disabled = isSaved; $('saveCli').textContent = isSaved ? 'Cliente guardado' : 'Guardar cliente';
+    if (!canSave) $('saveCliMsg').textContent = '';
+    renderSaved();
     $('cliente').textContent = !pairs.length ? '—' : cur ? (c ? c.nombre : 'No reconocido') : `${pairs.length} disposiciones`;
     $('clienteHint').textContent = !state.cat ? 'Carga el catálogo de fichas.' : !pairs.length ? 'Se toma del Anexo y del Pagaré.' : cur ? (c ? 'Contrato ' + c.contrato + ' · tomado de los documentos.' : 'Ningún cliente del catálogo aparece en estos documentos.') : 'Cada una en su pestaña.';
     const folds = on => { $('dataBox').hidden = !on; $('detailBox').hidden = !on; };
@@ -390,6 +398,67 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   }
 
   /* ---------- pestañas ---------- */
+  /* ---------- clientes guardados: solo el nombre, compartido entre todas las computadoras ----------
+     Se guardan en la tabla "clientes_guardados" de Supabase. La ficha NO se sube: se toma del catálogo
+     cargado en cada computadora y se empata por nombre. En vista previa (sin Supabase) se guardan solo en este navegador. */
+  const TBL = 'clientes_guardados', LSK = 'validador-clientes-guardados-v1';
+  const nkey = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const lsGet = () => { try { return JSON.parse(localStorage.getItem(LSK) || '[]'); } catch (e) { return []; } };
+  const lsSet = a => { try { localStorage.setItem(LSK, JSON.stringify(a)); } catch (e) { /* sin almacenamiento */ } };
+  const store = {
+    async list() {
+      if (!authOn) return lsGet();
+      const { data, error } = await sb.from(TBL).select('nombre').order('nombre');
+      if (error) throw error;
+      return data.map(r => r.nombre);
+    },
+    async add(nombre) {
+      if (!authOn) { const a = lsGet(); if (!a.some(n => nkey(n) === nkey(nombre))) { a.push(nombre); lsSet(a); } return; }
+      const { error } = await sb.from(TBL).insert({ nombre });
+      if (error && error.code !== '23505') throw error;            // 23505 = ya estaba guardado
+    },
+    async remove(nombre) {
+      if (!authOn) { lsSet(lsGet().filter(n => nkey(n) !== nkey(nombre))); return; }
+      const { error } = await sb.from(TBL).delete().eq('nombre', nombre);
+      if (error) throw error;
+    }
+  };
+  const storeMsg = e => {
+    const m = ((e && (e.code + ' ' + e.message)) || '').toLowerCase();
+    if (/42p01|pgrst205|could not find the table|does not exist/.test(m)) return 'Los clientes guardados todavía no están activados en la base de datos.';
+    if (/fetch|network/.test(m)) return 'Sin conexión: no se pudieron cargar los clientes guardados.';
+    return 'No se pudo conectar con los clientes guardados.';
+  };
+  const storeReady = () => !authOn || (sb && !document.body.classList.contains('gated'));
+  async function refreshSaved() {
+    if (!storeReady()) return;
+    try { state.saved = (await store.list()).sort((a, b) => a.localeCompare(b, 'es')); state.savedMsg = ''; }
+    catch (e) { state.savedMsg = storeMsg(e); }
+    render();
+  }
+  function renderSaved() {
+    const q = nkey(state.savedQ), all = state.saved, list = q ? all.filter(n => nkey(n).includes(q)) : all;
+    $('savedMeta').textContent = state.savedMsg || (all.length ? `${all.length} guardado${all.length > 1 ? 's' : ''}` + (authOn ? ' · se ven en todas las computadoras' : ' · vista previa: solo en este navegador') : '');
+    $('savedMeta').className = 'status' + (state.savedMsg ? ' bad' : '');
+    const has = n => !!(state.cat && state.cat.clientes.some(k => nkey(k.nombre) === nkey(n)));
+    $('savedList').innerHTML = list.map((n, i) => `<button type="button" class="saved" data-i="${i}" aria-current="${state.pick && nkey(state.pick) === nkey(n)}">${esc(n)}<span>${has(n) ? 'Ver ficha' : 'Sin ficha en el catálogo de esta computadora'}</span></button>`).join('')
+      || `<div class="empty">${state.savedMsg ? '' : all.length ? 'Ningún cliente guardado coincide con la búsqueda.' : 'Todavía no hay clientes guardados. En Validar, usa "Guardar cliente".'}</div>`;
+    $('savedList').querySelectorAll('button.saved').forEach(b => b.addEventListener('click', () => { state.pick = list[+b.dataset.i]; render(); }));
+  }
+  $('savedForm').addEventListener('submit', e => { e.preventDefault(); state.savedQ = $('savedQ').value; renderSaved(); });
+  $('savedQ').addEventListener('input', () => { state.savedQ = $('savedQ').value; renderSaved(); });
+  $('saveCli').addEventListener('click', async () => {
+    const cur = state.tab === 'resumen' ? null : state.pairs[state.tab], c = cur && cur.ci >= 0 && state.cat ? state.cat.clientes[cur.ci] : null;
+    if (!c) return;
+    const msg = $('saveCliMsg'); msg.className = 'status'; msg.textContent = 'Guardando…'; $('saveCli').disabled = true;
+    try { await store.add(c.nombre); await refreshSaved(); msg.className = 'status good'; msg.textContent = 'Guardado en Ficha.'; }
+    catch (e) { $('saveCli').disabled = false; msg.className = 'status bad'; msg.textContent = storeMsg(e); }
+  });
+  $('savedDrop').addEventListener('click', async () => {
+    const n = state.pick; if (!n) return;
+    try { await store.remove(n); state.pick = null; await refreshSaved(); } catch (e) { state.savedMsg = storeMsg(e); render(); }
+  });
+
   const VIEWS = ['validar', 'ficha', 'catalogo'];
   function show(v) {
     if (!VIEWS.includes(v)) v = 'validar';
@@ -468,7 +537,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     if (signup && !(r.data && r.data.session)) return gateMsg('Revisa tu correo para confirmar la cuenta y luego entra.', true);
     $('g-pass').value = ''; enter();
   });
-  function enter() { gate(false); $('signout').hidden = !authOn; }
+  function enter() { gate(false); $('signout').hidden = !authOn; refreshSaved(); }
   $('signout').addEventListener('click', async () => { try { await sb.auth.signOut(); } catch (e) { /* sin sesión */ } location.reload(); });
   async function startAuth() {
     gateText();
@@ -529,4 +598,9 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   if (saved && saved.text) loadCatalog(saved.text, saved.info || 'guardado en este navegador', false);
   boxStatus('Anexo'); boxStatus('Pagare'); rebuild();
   startAuth();
+  if (!authOn) refreshSaved();
+  // al abrir la pestaña Ficha o volver a la ventana se vuelven a traer, para ver lo que guardaron en otras computadoras
+  const maybeRefresh = () => { if (location.hash === '#ficha') refreshSaved(); };
+  window.addEventListener('hashchange', maybeRefresh);
+  window.addEventListener('focus', maybeRefresh);
 })();

@@ -175,6 +175,13 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
 .pill{display:inline-flex;padding:3px 10px;border-radius:999px;font-weight:650;font-size:12px}
 .p-ok,.p-minor{background:var(--ok-bg);color:var(--ok)} .p-review{background:var(--warn-bg);color:var(--warn)} .p-error{background:var(--bad-bg);color:var(--bad)} .p-pending,.p-na{background:var(--idle-bg);color:var(--idle)}
 .empty{color:var(--muted)}
+.savedlist{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.savedlist:empty{display:none}
+button.saved{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;border-radius:14px;padding:12px 15px;background:var(--glass-strong);border:1px solid var(--line);font-weight:650;font-size:14px;overflow-wrap:anywhere}
+button.saved span{font-weight:400;font-size:12px;color:var(--muted)}
+button.saved:hover{background:#fff}
+button.saved[aria-current="true"]{border-color:var(--ink);background:#fff}
+#saveCli{align-self:flex-start}
 .ficha{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
 .mini{background:var(--glass-strong);border:1px solid var(--line);border-radius:14px;padding:13px 15px;font-size:13px;display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}
 .mini b{font-size:14.5px}
@@ -262,6 +269,8 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
           <label class="f">Fecha de firma<input id="fechaFirma" type="date"></label>
           <div class="f">Cliente<div class="cli" id="cliente">—</div></div>
           <div class="status" id="clienteHint">Se toma del Anexo y del Pagaré.</div>
+          <button id="saveCli" type="button" hidden>Guardar cliente</button>
+          <div class="status" id="saveCliMsg"></div>
         </div>
       </div>
     </section>
@@ -291,10 +300,19 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
   <!-- FICHA -->
   <div class="view" id="view-ficha" hidden>
     <section class="card">
+      <div class="sechead"><h2>Clientes guardados</h2><span class="status" id="savedMeta"></span></div>
+      <form class="row" id="savedForm" role="search">
+        <input id="savedQ" type="search" placeholder="Buscar cliente guardado" aria-label="Buscar cliente guardado" style="flex:1 1 220px;width:auto">
+        <button class="primary" type="submit">Buscar</button>
+      </form>
+      <div class="savedlist" id="savedList"></div>
+    </section>
+    <section class="card">
       <div class="sechead"><h2 id="fichaTitle">Ficha de referencia</h2><span class="status" id="fichaMeta"></span></div>
       <div class="empty" id="fichaEmpty">Elige un cliente en Validar para ver su ficha.</div>
       <div class="ficha" id="fichaBody"></div>
       <div id="fichaRules"></div>
+      <div class="row"><button id="savedDrop" type="button" hidden>Quitar de guardados</button></div>
     </section>
   </div>
 
@@ -316,6 +334,6 @@ tr.s-error td:first-child{box-shadow:inset 3px 0 0 var(--bad)} tr.s-review td:fi
 <script src="lib/pdf.min.js"></script>
 <script src="engine.js?v=8"></script>
 <script src="pdf-report.js?v=1"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
