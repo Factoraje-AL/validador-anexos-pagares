@@ -566,10 +566,10 @@
     const fIni = parseDate(f.fechaInicio), fMax = parseDate(f.fechaMax), fFirma = parseDate(fechaFirma);
     add('anexo', 'Fecha de inicio de disposición', 'Fecha de firma', fmtDate(fFirma), cmpDate(fIni, fFirma, 'fecha de inicio de la disposición'));
     // el Anexo no puede iniciar después de que venció el contrato
-    add('anexo', 'Contrato vigente a la fecha de inicio', 'Ficha', c.vencimientoContrato ? 'Inicio a más tardar el ' + fmtDate(c.vencimientoContrato) : '— la ficha no lo trae —',
+    add('anexo', 'Contrato vigente (inicio del Anexo vs. vencimiento del contrato)', 'Ficha', c.vencimientoContrato ? 'Contrato vence el ' + fmtDate(c.vencimientoContrato) : '— la ficha no lo trae —',
       !c.vencimientoContrato ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de firma del contrato, así que no se pudo calcular su vencimiento (12 meses después). Agrégala a la ficha y confírmalo a ojo mientras tanto.' }
       : !fIni ? pend('fecha de inicio de la disposición')
-      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `Contrato vencido, no firmar: el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)}${c.vencimientoCalculado ? ', 12 meses después de su firma del ' + fmtDate(c.fechaContrato) : ''} (${dayDiff(c.vencimientoContrato, fIni)} día(s) después del vencimiento).` }
+      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `No firmar: el contrato está vencido. Difiere por ${dayDiff(c.vencimientoContrato, fIni)} día(s): el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)}${c.vencimientoCalculado ? ' (12 meses después de su firma del ' + fmtDate(c.fechaContrato) + ')' : ''}.` }
       : { status: 'ok', encontrado: fmtDate(fIni) });
     add('anexo', 'Fecha del contrato citada en el Apéndice', 'Ficha', fmtDate(c.fechaContrato), cmpDate(parseDate(f.fechaContratoApendice), c.fechaContrato, 'fecha del contrato citada en el Apéndice'));
 
@@ -640,8 +640,8 @@
     add('pagare', 'Fecha del Pagaré', 'Fecha de firma', fmtDate(fFirma), cmpDate(parseDate(f.pagareFecha), fFirma, 'fecha del Pagaré'));
     { // el Pagaré tampoco puede tener fecha posterior al vencimiento del contrato
       const fp = parseDate(f.pagareFecha), v = c.vencimientoContrato;
-      if (v && fp) add('pagare', 'Contrato vigente a la fecha del Pagaré', 'Ficha', 'Fecha a más tardar el ' + fmtDate(v),
-        fp > v ? { status: 'error', encontrado: fmtDate(fp), nota: `Contrato vencido, no firmar: el Pagaré tiene fecha ${fmtDate(fp)} y el contrato venció el ${fmtDate(v)}${c.vencimientoCalculado ? ', 12 meses después de su firma del ' + fmtDate(c.fechaContrato) : ''} (${dayDiff(v, fp)} día(s) después del vencimiento).` }
+      if (v && fp) add('pagare', 'Contrato vigente (fecha del Pagaré vs. vencimiento del contrato)', 'Ficha', 'Contrato vence el ' + fmtDate(v),
+        fp > v ? { status: 'error', encontrado: fmtDate(fp), nota: `No firmar: el contrato está vencido. Difiere por ${dayDiff(v, fp)} día(s): el Pagaré tiene fecha ${fmtDate(fp)} y el contrato venció el ${fmtDate(v)}${c.vencimientoCalculado ? ' (12 meses después de su firma del ' + fmtDate(c.fechaContrato) + ')' : ''}.` }
         : { status: 'ok', encontrado: fmtDate(fp) });
     }
     { // la fecha del Pagaré debe ser la misma que la del Anexo
