@@ -588,7 +588,13 @@
         : fp === fIni ? { status: 'ok', encontrado: fmtDate(fp) }
         : { status: 'error', encontrado: fmtDate(fp), nota: `El Pagaré tiene fecha ${fmtDate(fp)} y el Anexo ${fmtDate(fIni)}: difieren por ${Math.abs(dayDiff(fIni, fp))} día(s). Deben ser la misma.` });
     }
-    if (parseDate(f.pagareVence) && fMax) add('pagare', 'Fecha de vencimiento vs. Fecha Máxima de Pago', 'Anexo', fmtDate(fMax), cmpDate(parseDate(f.pagareVence), fMax, 'fecha de vencimiento'));
+    { // el vencimiento del Pagaré debe ser la Fecha Máxima de Pago del Anexo (siempre se revisa; si no se lee, queda pendiente)
+      const fv = parseDate(f.pagareVence);
+      add('pagare', 'Fecha de vencimiento vs. Fecha Máxima de Pago', 'Anexo', fmtDate(fMax),
+        !fv ? pend('fecha de vencimiento del Pagaré') : !fMax ? { status: 'pending', encontrado: fmtDate(fv), nota: 'No se pudo leer la Fecha Máxima de Pago del Anexo para compararla.' }
+        : fv === fMax ? { status: 'ok', encontrado: fmtDate(fv) }
+        : { status: 'error', encontrado: fmtDate(fv), nota: `El Pagaré vence el ${fmtDate(fv)} y la Fecha Máxima de Pago del Anexo es ${fmtDate(fMax)}: difieren por ${Math.abs(dayDiff(fMax, fv))} día(s). Deben ser la misma.` });
+    }
     if (P) {
       c.firmantes.forEach(n => add('pagare', 'Firmante del suscriptor', 'Ficha', n, checkName(P, n)));
       c.os.forEach(o => {
