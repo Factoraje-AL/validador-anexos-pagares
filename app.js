@@ -114,7 +114,7 @@
     const ocr = docs.some(d => d.how === 'ocr');
     st.className = 'status ' + (problems && problems.length ? 'bad' : docs.length ? 'good' : '');
     st.textContent = (docs.length ? `${docs.length} ${WORD[which][docs.length > 1 ? 1 : 0]} cargado${docs.length > 1 ? 's' : ''}` + (ocr ? ' · alguno se leyó de imagen (OCR)' : '') : IDLE)
-      + (problems && problems.length ? ' · No se pudo leer: ' + problems.join('; ') : '');
+      + (problems && problems.length ? ' · No se cargó: ' + problems.join('; ') : '');
     const host = $('list' + which);
     host.innerHTML = docs.map((d, i) => `<span class="chip" title="${esc(d.name)}"><span>${esc(d.name)}</span><button type="button" data-i="${i}" aria-label="Quitar ${esc(d.name)}">×</button></span>`).join('');
     host.querySelectorAll('button').forEach(b => b.addEventListener('click', e => {
@@ -127,7 +127,7 @@
   async function handleFiles(files, which) {
     files = Array.from(files || []); if (!files.length) return;
     if (state.demo) leaveDemo();
-    const st = $('st' + which), problems = [];
+    const st = $('st' + which), problems = [], dudas = [];
     const say = t => { st.className = 'status'; st.textContent = t; };
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -136,12 +136,17 @@
         const r = await readAny(file, say);
         if (r.text.replace(/\s/g, '').length < 40) throw new Error('no se encontró texto');
         if (/^##\s*Cliente:/m.test(r.text)) throw new Error('es el catálogo; cárgalo en la pestaña Catálogo');
+        // primer paso: que cada documento esté en su caja
+        const kind = V.docKind(r.text);
+        if (kind && kind !== which) throw new Error(kind === 'Pagare' ? 'es un Pagaré: súbelo en la caja de Pagarés (Paso 2)' : 'es un Anexo: súbelo en la caja de Anexos (Paso 1)');
+        if (!kind) dudas.push(file.name);
         const list = state[LIST[which]], doc = { name: file.name, text: r.text, how: r.how };
         const at = list.findIndex(d => d.name === file.name);
         if (at >= 0) list[at] = doc; else list.push(doc);          // mismo nombre = versión corregida, reemplaza
       } catch (e) { problems.push(`${file.name} (${e && e.message ? e.message : 'formato no soportado'})`); }
     }
     boxStatus(which, problems);
+    if (dudas.length) $('st' + which).textContent += ` · No se pudo confirmar que ${dudas.length > 1 ? 'sean' : 'sea'} ${WORD[which][dudas.length > 1 ? 1 : 0]}: ${dudas.join(', ')}. Revisa que ${dudas.length > 1 ? 'estén' : 'esté'} en la caja correcta.`;
     rebuild();
   }
   function wireDrop(which) {
@@ -215,7 +220,7 @@
     const tasas = [30, 60, 90, 120].map(p => `${p} d: ${c.tasas[p] === null || c.tasas[p] === undefined ? 'no autorizado' : c.tasas[p].toFixed(2) + '%'}`).join(' · ');
     const cu = c.cuenta || {};
     $('fichaBody').innerHTML = [
-      ['Contrato', `<b>${esc(c.contrato)}</b>firmado el ${esc(V.fmtDate(c.fechaContrato))}<span>${c.vencimientoContrato ? 'Vence el ' + esc(V.fmtDate(c.vencimientoContrato)) : 'Sin fecha de vencimiento en la ficha'}</span>`],
+      ['Contrato', `<b>${esc(c.contrato)}</b>firmado el ${esc(V.fmtDate(c.fechaContrato))}<span>${c.vencimientoContrato ? 'Vence el ' + esc(V.fmtDate(c.vencimientoContrato)) + (c.vencimientoCalculado ? ' (12 meses después de la firma)' : '') : 'Sin fecha de vencimiento'}</span>`],
       ['Factorado', `<b>${esc(c.nombre)}</b>${esc(c.rfc ? 'RFC ' + c.rfc : 'Sin RFC mexicano')}<span>${esc(c.domicilio)}</span>`],
       ...c.os.map(o => [`Obligado solidario · ${o.tipo === 'PM' ? 'persona moral' : 'persona física'}`, `<b>${esc(o.nombre)}</b><span>${esc(o.domicilio)}</span>${o.nota ? '<span class="status">' + esc(o.nota) + '</span>' : ''}`]),
       ['Firmantes del cliente', `<b>${esc(c.firmantes.join(' y '))}</b>`],
@@ -528,7 +533,6 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
 - **Fecha de extracción de la ficha:** 01/01/2026
 - **Número de contrato:** 00000/000
 - **Fecha de firma del contrato:** 1 de enero de 2026
-- **Fecha de vencimiento del contrato:** 1 de enero de 2027
 - **Depositario:** NOMBRE DEL DEPOSITARIO
 ### Tasa de descuento (estructura de periodos)
 - **Vigente al:** 01/01/2026
@@ -563,7 +567,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     const c = firstClient($('edText').value), el = $('edSee');
     if (!c) { el.className = 'status bad'; el.textContent = 'Todavía no se reconoce como ficha. Debe empezar con "## Cliente: NOMBRE" y traer el número de contrato o los obligados solidarios, igual que en el catálogo.'; return null; }
     const cu = c.cuenta || {}, falta = [];
-    if (!c.contrato) falta.push('número de contrato'); if (!c.fechaContrato) falta.push('fecha de firma del contrato'); if (!c.vencimientoContrato) falta.push('fecha de vencimiento del contrato');
+    if (!c.contrato) falta.push('número de contrato'); if (!c.fechaContrato) falta.push('fecha de firma del contrato');
     if (!c.domicilio) falta.push('domicilio'); if (!c.firmantes.length) falta.push('firmantes'); if (!(c.depositarios || []).length) falta.push('depositario'); if (!cu.clabe) falta.push('CLABE');
     el.className = 'status' + (falta.length ? '' : ' good');
     el.textContent = `Se reconoce: ${c.nombre} · contrato ${c.contrato || '—'} · ${c.os.length} obligado${c.os.length === 1 ? '' : 's'} solidario${c.os.length === 1 ? '' : 's'} · ${c.firmantes.length} firmante${c.firmantes.length === 1 ? '' : 's'} · depositario ${(c.depositarios || []).join(' y ') || '—'} · CLABE ${cu.clabe || '—'}.` + (falta.length ? ' No se encontró: ' + falta.join(', ') + '.' : '');

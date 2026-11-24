@@ -409,6 +409,11 @@
     }
     // también se acepta como renglón suelto en cualquier parte de la ficha:  - **Depositario:** NOMBRE
     if (!c.depositarios.length) for (const l of part.split('\n')) { const k = l.match(/^\s*-\s*\**Depositarios?\**\s*:\**\s*(.+)$/i); if (k) depName(k[1]).forEach(n => c.depositarios.push(n)); }
+    // el contrato vence exactamente 12 meses después de su firma, salvo que la ficha diga otra fecha
+    if (!c.vencimientoContrato && c.fechaContrato) {
+      const [y, mo, dd] = c.fechaContrato.split('-').map(Number), last = new Date(Date.UTC(y + 1, mo, 0)).getUTCDate();
+      c.vencimientoContrato = iso(y + 1, mo, Math.min(dd, last)); c.vencimientoCalculado = true;
+    }
     return c.contrato || c.os.length ? c : null;
   }
   function detectClient(cat, text) {
@@ -562,9 +567,9 @@
     add('anexo', 'Fecha de inicio de disposición', 'Fecha de firma', fmtDate(fFirma), cmpDate(fIni, fFirma, 'fecha de inicio de la disposición'));
     // el Anexo no puede iniciar después de que venció el contrato
     add('anexo', 'Contrato vigente a la fecha de inicio', 'Ficha', c.vencimientoContrato ? 'Inicio a más tardar el ' + fmtDate(c.vencimientoContrato) : '— la ficha no lo trae —',
-      !c.vencimientoContrato ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de vencimiento del contrato, así que no se pudo comparar. Agrégala a la ficha (- **Fecha de vencimiento del contrato:** FECHA) y confírmalo a ojo mientras tanto.' }
+      !c.vencimientoContrato ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de firma del contrato, así que no se pudo calcular su vencimiento (12 meses después). Agrégala a la ficha y confírmalo a ojo mientras tanto.' }
       : !fIni ? pend('fecha de inicio de la disposición')
-      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `Contrato vencido, no firmar: el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)} (${dayDiff(c.vencimientoContrato, fIni)} día(s) después del vencimiento).` }
+      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `Contrato vencido, no firmar: el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)}${c.vencimientoCalculado ? ', 12 meses después de su firma del ' + fmtDate(c.fechaContrato) : ''} (${dayDiff(c.vencimientoContrato, fIni)} día(s) después del vencimiento).` }
       : { status: 'ok', encontrado: fmtDate(fIni) });
     add('anexo', 'Fecha del contrato citada en el Apéndice', 'Ficha', fmtDate(c.fechaContrato), cmpDate(parseDate(f.fechaContratoApendice), c.fechaContrato, 'fecha del contrato citada en el Apéndice'));
 
@@ -689,7 +694,18 @@
     return { checks, pct, evaluados: ev.length, correctos: count('ok') + minors, errors, reviews, pending, minors, veredicto, anexo: part('anexo'), pagare: part('pagare'), interno: part('interno') };
   }
 
-  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress, checkLetra, checkDigits, checkDepositario, depositariosIn };
+  /* ¿El texto es un Anexo o un Pagaré? Sirve para avisar si se subió en la caja equivocada. Devuelve 'Anexo', 'Pagare' o null (no se sabe). */
+  function docKind(text) {
+    const F = flat(String(text || '')).replace(/\s+/g, ' '), top = F.slice(0, 400);
+    const has = (re, pts) => (re.test(F) ? pts : 0);
+    const p = has(/PROMETE(N)?( Y SE OBLIGAN?)?( A)? PAGAR INCONDICIONALMENTE/, 3) + has(/POR ESTE PAGARE/, 2) + (/PAGARE/.test(top) ? 2 : 0) + has(/SUSCRIPTOR/, 1) + has(/BUENO POR/, 1) + has(/PROTESTO/, 1);
+    const a = (/ANEXO( A\b| NO\b| NUM)/.test(F.slice(0, 900)) ? 2 : 0) + has(/VALOR NOMINAL/, 2) + has(/FECHA MAXIMA DE PAGO/, 2) + has(/PRECIO BASE/, 1) + has(/DERECHOS DE CREDITO/, 1) + has(/TASA DE DESCUENTO/, 1) + has(/AFORO/, 1);
+    if (p >= 3 && p > a) return 'Pagare';
+    if (a >= 3 && a > p) return 'Anexo';
+    return null;
+  }
+
+  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress, checkLetra, checkDigits, checkDepositario, depositariosIn, docKind };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.VAL = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
