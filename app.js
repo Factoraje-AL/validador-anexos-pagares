@@ -204,7 +204,7 @@
     'correcto': 'Todo coincide. Listo para firma.',
     'confirmar': `Sin errores. ${r.reviews} punto${r.reviews > 1 ? 's' : ''} por confirmar.`,
     'incompleto': `Sin errores hasta ahora. ${r.pending} punto${r.pending > 1 ? 's' : ''} sin revisar.`,
-    'no-firmable': `No firmar. ${r.errors} error${r.errors > 1 ? 'es' : ''} material${r.errors > 1 ? 'es' : ''}.`
+    'no-firmable': `${r.checks.some(k => k.campo === 'Contrato vigente a la fecha de inicio' && k.status === 'error') ? 'Contrato vencido, no firmar.' : 'No firmar.'} ${r.errors} error${r.errors > 1 ? 'es' : ''} material${r.errors > 1 ? 'es' : ''}.`
   }[r.veredicto]);
 
   /* ---------- ficha ---------- */
@@ -215,7 +215,7 @@
     const tasas = [30, 60, 90, 120].map(p => `${p} d: ${c.tasas[p] === null || c.tasas[p] === undefined ? 'no autorizado' : c.tasas[p].toFixed(2) + '%'}`).join(' · ');
     const cu = c.cuenta || {};
     $('fichaBody').innerHTML = [
-      ['Contrato', `<b>${esc(c.contrato)}</b>firmado el ${esc(V.fmtDate(c.fechaContrato))}`],
+      ['Contrato', `<b>${esc(c.contrato)}</b>firmado el ${esc(V.fmtDate(c.fechaContrato))}<span>${c.vencimientoContrato ? 'Vence el ' + esc(V.fmtDate(c.vencimientoContrato)) : 'Sin fecha de vencimiento en la ficha'}</span>`],
       ['Factorado', `<b>${esc(c.nombre)}</b>${esc(c.rfc ? 'RFC ' + c.rfc : 'Sin RFC mexicano')}<span>${esc(c.domicilio)}</span>`],
       ...c.os.map(o => [`Obligado solidario · ${o.tipo === 'PM' ? 'persona moral' : 'persona física'}`, `<b>${esc(o.nombre)}</b><span>${esc(o.domicilio)}</span>${o.nota ? '<span class="status">' + esc(o.nota) + '</span>' : ''}`]),
       ['Firmantes del cliente', `<b>${esc(c.firmantes.join(' y '))}</b>`],
@@ -496,6 +496,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
 - **Fecha de extracción de la ficha:** 01/01/2026
 - **Número de contrato:** 00000/000
 - **Fecha de firma del contrato:** 1 de enero de 2026
+- **Fecha de vencimiento del contrato:** 1 de enero de 2027
 - **Depositario:** NOMBRE DEL DEPOSITARIO
 ### Tasa de descuento (estructura de periodos)
 - **Vigente al:** 01/01/2026
@@ -530,7 +531,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     const c = firstClient($('edText').value), el = $('edSee');
     if (!c) { el.className = 'status bad'; el.textContent = 'Todavía no se reconoce como ficha. Debe empezar con "## Cliente: NOMBRE" y traer el número de contrato o los obligados solidarios, igual que en el catálogo.'; return null; }
     const cu = c.cuenta || {}, falta = [];
-    if (!c.contrato) falta.push('número de contrato'); if (!c.fechaContrato) falta.push('fecha de firma del contrato');
+    if (!c.contrato) falta.push('número de contrato'); if (!c.fechaContrato) falta.push('fecha de firma del contrato'); if (!c.vencimientoContrato) falta.push('fecha de vencimiento del contrato');
     if (!c.domicilio) falta.push('domicilio'); if (!c.firmantes.length) falta.push('firmantes'); if (!(c.depositarios || []).length) falta.push('depositario'); if (!cu.clabe) falta.push('CLABE');
     el.className = 'status' + (falta.length ? '' : ' good');
     el.textContent = `Se reconoce: ${c.nombre} · contrato ${c.contrato || '—'} · ${c.os.length} obligado${c.os.length === 1 ? '' : 's'} solidario${c.os.length === 1 ? '' : 's'} · ${c.firmantes.length} firmante${c.firmantes.length === 1 ? '' : 's'} · depositario ${(c.depositarios || []).join(' y ') || '—'} · CLABE ${cu.clabe || '—'}.` + (falta.length ? ' No se encontró: ' + falta.join(', ') + '.' : '');

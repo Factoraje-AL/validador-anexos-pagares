@@ -347,12 +347,14 @@
     const head = secs[0];
     const c = {
       nombre: stripMd(head.split('\n')[0].replace(/^Cliente:\s*/i, '')), raw: part, contrato: '', fechaContrato: null, fechaExtraccion: '',
-      tasas: {}, tasasVigente: '', rfc: '', domicilio: '', os: [], firmantes: [], cuenta: {}, reglas: [], notaAvales: [], depositarios: []
+      tasas: {}, tasasVigente: '', rfc: '', domicilio: '', os: [], firmantes: [], cuenta: {}, reglas: [], notaAvales: [], depositarios: [], vencimientoContrato: null
     };
     let m;
     if ((m = head.match(/\*\*Número de contrato:\*\*\s*(\S+)/))) c.contrato = m[1];
     if ((m = head.match(/\*\*Fecha de firma del contrato:\*\*\s*(.+)/))) c.fechaContrato = parseDate(m[1]);
     if ((m = head.match(/\*\*Fecha de extracción de la ficha:\*\*\s*(.+)/))) c.fechaExtraccion = stripMd(m[1]);
+    // vencimiento del contrato:  - **Fecha de vencimiento del contrato:** 3 de marzo de 2027   (también "Vigencia del contrato" o "Vencimiento del contrato")
+    if ((m = part.match(/^\s*-\s*\**\s*(?:Fecha de vencimiento del contrato|Vencimiento del contrato|Vigencia del contrato|Fecha de t[eé]rmino del contrato)[^:\n]*:\**\s*(.+)$/im))) c.vencimientoContrato = parseDate(stripMd(m[1]));
     for (const sec of secs.slice(1)) {
       const nl = sec.indexOf('\n'), title = sec.slice(0, nl < 0 ? undefined : nl), body = nl < 0 ? '' : sec.slice(nl + 1);
       const lines = body.split('\n').filter(l => /^- /.test(l)).map(l => l.slice(2).trim());
@@ -558,6 +560,12 @@
     }
     const fIni = parseDate(f.fechaInicio), fMax = parseDate(f.fechaMax), fFirma = parseDate(fechaFirma);
     add('anexo', 'Fecha de inicio de disposición', 'Fecha de firma', fmtDate(fFirma), cmpDate(fIni, fFirma, 'fecha de inicio de la disposición'));
+    // el Anexo no puede iniciar después de que venció el contrato
+    add('anexo', 'Contrato vigente a la fecha de inicio', 'Ficha', c.vencimientoContrato ? 'Inicio a más tardar el ' + fmtDate(c.vencimientoContrato) : '— la ficha no lo trae —',
+      !c.vencimientoContrato ? { status: 'review', encontrado: fIni ? fmtDate(fIni) : '—', nota: 'La ficha de este cliente no trae la fecha de vencimiento del contrato, así que no se pudo comparar. Agrégala a la ficha (- **Fecha de vencimiento del contrato:** FECHA) y confírmalo a ojo mientras tanto.' }
+      : !fIni ? pend('fecha de inicio de la disposición')
+      : fIni > c.vencimientoContrato ? { status: 'error', encontrado: fmtDate(fIni), nota: `Contrato vencido, no firmar: el Anexo inicia el ${fmtDate(fIni)} y el contrato venció el ${fmtDate(c.vencimientoContrato)} (${dayDiff(c.vencimientoContrato, fIni)} día(s) después del vencimiento).` }
+      : { status: 'ok', encontrado: fmtDate(fIni) });
     add('anexo', 'Fecha del contrato citada en el Apéndice', 'Ficha', fmtDate(c.fechaContrato), cmpDate(parseDate(f.fechaContratoApendice), c.fechaContrato, 'fecha del contrato citada en el Apéndice'));
 
     /* ===== VERIFICACIONES INTERNAS ===== */
