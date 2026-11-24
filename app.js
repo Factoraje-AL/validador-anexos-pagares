@@ -20,7 +20,7 @@
   const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
 
   /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
-  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], savedMsg: '', savedQ: '', pick: null };
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null };
 
   /* ---------- campos (solo lectura) ---------- */
   function buildFields(host, defs) {
@@ -39,7 +39,7 @@
   function loadCatalog(text, info, save) {
     const cat = V.parseCatalog(text);
     if (!cat.clientes.length) { $('catStatus').className = 'status bad'; $('catStatus').textContent = 'Ese archivo no trae fichas con el formato del catálogo ("## Cliente: ...").'; return false; }
-    state.cat = cat; state.catInfo = info;
+    state.baseText = text; state.catInfo = info; applyCatalog();
     if (save) { try { localStorage.setItem(KEY, JSON.stringify({ text, info })); } catch (e) { /* sin almacenamiento: se pide de nuevo la próxima vez */ } }
     $('catStatus').className = 'status good';
     $('catStatus').textContent = `${cat.clientes.length} fichas cargadas · ${info}`;
@@ -253,7 +253,10 @@
     // caja de cliente y pestaña Ficha
     const first = pairs.find(x => x.ci >= 0), fc = c || (first && state.cat ? state.cat.clientes[first.ci] : null);
     const picked = state.pick && state.cat ? state.cat.clientes.find(k => nkey(k.nombre) === nkey(state.pick)) : null;
-    renderFicha(state.pick ? picked || null : fc);
+    state.fichaShown = state.pick ? picked || null : fc;
+    renderFicha(state.fichaShown);
+    $('fichaEdit').hidden = !state.fichaShown;
+    if (state.fichaShown && state.fichaShown.compartida) $('fichaMeta').textContent += ' · ficha compartida (editada aquí)';
     if (state.pick && !picked) { $('fichaTitle').textContent = state.pick; $('fichaEmpty').textContent = state.cat ? 'Este cliente está guardado, pero el catálogo cargado en esta computadora no trae su ficha. Carga el catálogo actualizado en la pestaña Catálogo.' : 'Carga el catálogo de fichas en esta computadora para ver la ficha de este cliente.'; }
     else $('fichaEmpty').textContent = 'Valida una disposición o elige un cliente guardado para ver su ficha.';
     $('savedDrop').hidden = !state.pick;
@@ -395,56 +398,84 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     if (!state.demo) return;
     state.demo = false; $('demoBanner').hidden = true;
     resetDocs();
-    if (state.cat && /ficticio/.test(state.catInfo)) { state.cat = null; $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; }
+    if (state.cat && /ficticio/.test(state.catInfo)) { state.baseText = ''; applyCatalog(); $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; }
   }
 
   /* ---------- pestañas ---------- */
-  /* ---------- clientes guardados: solo el nombre, compartido entre todas las computadoras ----------
-     Se guardan en la tabla "clientes_guardados" de Supabase. La ficha NO se sube: se toma del catálogo
-     cargado en cada computadora y se empata por nombre. En vista previa (sin Supabase) se guardan solo en este navegador. */
+  /* ---------- clientes guardados y fichas compartidas (iguales en todas las computadoras) ----------
+     Tabla "clientes_guardados" de Supabase: una fila por cliente con su nombre y, si se editó o se dio de alta
+     aquí, el texto de su ficha. Una ficha compartida sustituye SOLO a la de ese cliente; las demás no cambian.
+     Si la fila no trae ficha, se usa la del catálogo cargado en cada computadora (empatada por nombre).
+     En vista previa (sin Supabase) todo esto se guarda solo en este navegador. */
   const TBL = 'clientes_guardados', LSK = 'validador-clientes-guardados-v1';
-  const nkey = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
-  const lsGet = () => { try { return JSON.parse(localStorage.getItem(LSK) || '[]'); } catch (e) { return []; } };
+  const nkey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const lsGet = () => { try { return (JSON.parse(localStorage.getItem(LSK) || '[]') || []).map(r => typeof r === 'string' ? { nombre: r, ficha: null } : r); } catch (e) { return []; } };
   const lsSet = a => { try { localStorage.setItem(LSK, JSON.stringify(a)); } catch (e) { /* sin almacenamiento */ } };
   const store = {
     async list() {
       if (!authOn) return lsGet();
-      const { data, error } = await sb.from(TBL).select('nombre').order('nombre');
+      const { data, error } = await sb.from(TBL).select('nombre, ficha').order('nombre');
       if (error) throw error;
-      return data.map(r => r.nombre);
+      return data;
     },
-    async add(nombre) {
-      if (!authOn) { const a = lsGet(); if (!a.some(n => nkey(n) === nkey(nombre))) { a.push(nombre); lsSet(a); } return; }
-      const { error } = await sb.from(TBL).insert({ nombre });
-      if (error && error.code !== '23505') throw error;            // 23505 = ya estaba guardado
+    // guarda (o actualiza) un cliente; "antes" es el nombre con el que ya estaba guardado, si lo estaba
+    async save(nombre, ficha, antes) {
+      if (!authOn) {
+        const a = lsGet().filter(r => nkey(r.nombre) !== nkey(antes || nombre) && nkey(r.nombre) !== nkey(nombre));
+        const old = lsGet().find(r => nkey(r.nombre) === nkey(antes || nombre));
+        a.push({ nombre, ficha: ficha === undefined ? (old ? old.ficha : null) : ficha }); lsSet(a); return;
+      }
+      const row = { nombre }; if (ficha !== undefined) { row.ficha = ficha; row.actualizado_el = new Date().toISOString(); }
+      const r = antes ? await sb.from(TBL).update(row).eq('nombre', antes).select('nombre') : await sb.from(TBL).insert(row).select('nombre');
+      if (r.error && !(r.error.code === '23505' && ficha === undefined)) throw r.error;   // 23505 = ya estaba guardado
+      if (!r.error && antes && !(r.data || []).length) throw { code: 'sin-cambio', message: 'sin cambio' };
     },
     async remove(nombre) {
-      if (!authOn) { lsSet(lsGet().filter(n => nkey(n) !== nkey(nombre))); return; }
+      if (!authOn) { lsSet(lsGet().filter(r => nkey(r.nombre) !== nkey(nombre))); return; }
       const { error } = await sb.from(TBL).delete().eq('nombre', nombre);
       if (error) throw error;
     }
   };
   const storeMsg = e => {
     const m = ((e && (e.code + ' ' + e.message)) || '').toLowerCase();
-    if (/42p01|pgrst205|could not find the table|does not exist/.test(m)) return 'Los clientes guardados todavía no están activados en la base de datos.';
-    if (/fetch|network/.test(m)) return 'Sin conexión: no se pudieron cargar los clientes guardados.';
+    if (/42p01|pgrst205|pgrst204|42703|could not find the|does not exist/.test(m)) return 'Los clientes guardados todavía no están activados en la base de datos.';
+    if (/42501|row-level security|permission denied|sin-cambio/.test(m)) return 'Tu cuenta no tiene permiso para guardar clientes.';
+    if (/23505/.test(m)) return 'Ya hay un cliente guardado con ese nombre.';
+    if (/fetch|network/.test(m)) return 'Sin conexión: no se pudo conectar con los clientes guardados.';
     return 'No se pudo conectar con los clientes guardados.';
   };
   const storeReady = () => !authOn || (sb && !document.body.classList.contains('gated'));
+  const savedName = n => state.saved.find(x => nkey(x) === nkey(n)) || null;
+  const firstClient = text => (V.parseCatalog(text || '').clientes || [])[0] || null;
+  /* Catálogo en uso = catálogo cargado en esta computadora + fichas compartidas (cada una sustituye solo a su cliente). */
+  function applyCatalog() {
+    const cat = V.parseCatalog(state.baseText || '');
+    Object.keys(state.fichas).forEach(k => {
+      const c = firstClient(state.fichas[k]); if (!c) return;
+      c.compartida = true;
+      const at = cat.clientes.findIndex(x => nkey(x.nombre) === k || nkey(x.nombre) === nkey(c.nombre));
+      if (at >= 0) cat.clientes[at] = c; else cat.clientes.push(c);
+    });
+    state.cat = cat.clientes.length ? cat : null;
+  }
   async function refreshSaved() {
     if (!storeReady()) return;
-    try { state.saved = (await store.list()).sort((a, b) => a.localeCompare(b, 'es')); state.savedMsg = ''; }
-    catch (e) { state.savedMsg = storeMsg(e); }
-    render();
+    try {
+      const rows = await store.list();
+      state.saved = rows.map(r => r.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+      state.fichas = {}; rows.forEach(r => { if (r.ficha) state.fichas[nkey(r.nombre)] = r.ficha; });
+      state.savedMsg = '';
+    } catch (e) { state.savedMsg = storeMsg(e); }
+    applyCatalog(); rebuild();
   }
   function renderSaved() {
     const q = nkey(state.savedQ), all = state.saved, list = q ? all.filter(n => nkey(n).includes(q)) : all;
     $('savedMeta').textContent = state.savedMsg || (all.length ? `${all.length} guardado${all.length > 1 ? 's' : ''}` + (authOn ? ' · se ven en todas las computadoras' : ' · vista previa: solo en este navegador') : '');
     $('savedMeta').className = 'status' + (state.savedMsg ? ' bad' : '');
     const has = n => !!(state.cat && state.cat.clientes.some(k => nkey(k.nombre) === nkey(n)));
-    $('savedList').innerHTML = list.map((n, i) => `<button type="button" class="saved" data-i="${i}" aria-current="${state.pick && nkey(state.pick) === nkey(n)}">${esc(n)}<span>${has(n) ? 'Ver ficha' : 'Sin ficha en el catálogo de esta computadora'}</span></button>`).join('')
+    $('savedList').innerHTML = list.map((n, i) => `<button type="button" class="saved" data-i="${i}" aria-current="${state.pick && nkey(state.pick) === nkey(n)}">${esc(n)}<span>${state.fichas[nkey(n)] ? 'Ficha compartida · ver' : has(n) ? 'Ver ficha' : 'Sin ficha en esta computadora'}</span></button>`).join('')
       || `<div class="empty">${state.savedMsg ? '' : all.length ? 'Ningún cliente guardado coincide con la búsqueda.' : 'Todavía no hay clientes guardados. En Validar, usa "Guardar cliente".'}</div>`;
-    $('savedList').querySelectorAll('button.saved').forEach(b => b.addEventListener('click', () => { state.pick = list[+b.dataset.i]; render(); }));
+    $('savedList').querySelectorAll('button.saved').forEach(b => b.addEventListener('click', () => { state.pick = list[+b.dataset.i]; closeEditor(); render(); }));
   }
   $('savedForm').addEventListener('submit', e => { e.preventDefault(); state.savedQ = $('savedQ').value; renderSaved(); });
   $('savedQ').addEventListener('input', () => { state.savedQ = $('savedQ').value; renderSaved(); });
@@ -452,12 +483,81 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     const cur = state.tab === 'resumen' ? null : state.pairs[state.tab], c = cur && cur.ci >= 0 && state.cat ? state.cat.clientes[cur.ci] : null;
     if (!c) return;
     const msg = $('saveCliMsg'); msg.className = 'status'; msg.textContent = 'Guardando…'; $('saveCli').disabled = true;
-    try { await store.add(c.nombre); await refreshSaved(); msg.className = 'status good'; msg.textContent = 'Guardado en Ficha.'; }
+    try { await store.save(c.nombre); await refreshSaved(); msg.className = 'status good'; msg.textContent = 'Guardado en Ficha.'; }
     catch (e) { $('saveCli').disabled = false; msg.className = 'status bad'; msg.textContent = storeMsg(e); }
   });
   $('savedDrop').addEventListener('click', async () => {
     const n = state.pick; if (!n) return;
-    try { await store.remove(n); state.pick = null; await refreshSaved(); } catch (e) { state.savedMsg = storeMsg(e); render(); }
+    try { await store.remove(n); state.pick = null; closeEditor(); await refreshSaved(); } catch (e) { state.savedMsg = storeMsg(e); render(); }
+  });
+
+  /* ---------- editar la ficha de un solo cliente / dar de alta un cliente nuevo ---------- */
+  const NEW_FICHA = `## Cliente: NOMBRE DEL CLIENTE, S.A. DE C.V.
+- **Fecha de extracción de la ficha:** 01/01/2026
+- **Número de contrato:** 00000/000
+- **Fecha de firma del contrato:** 1 de enero de 2026
+- **Depositario:** NOMBRE DEL DEPOSITARIO
+### Tasa de descuento (estructura de periodos)
+- **Vigente al:** 01/01/2026
+- 30 días → **0.00%**
+- 60 días → **0.00%**
+- 90 días → **0.00%**
+- 120 días → **no autorizado** para este cliente
+### Factorado / Obligado Solidario Uno
+- Razón social: **NOMBRE DEL CLIENTE, S.A. DE C.V.**
+- RFC: **XXX000000XX0**
+- Domicilio: Calle, número, colonia, municipio, estado, C.P. 00000
+### Obligados Solidarios
+- **Persona física:** **NOMBRE COMPLETO** — RFC **XXXX000000XX0** — Calle, número, colonia, municipio, estado, C.P. 00000
+### Firmantes autorizados del cliente
+- NOMBRE COMPLETO (Representante Legal)
+### Cuenta del factorado
+- Banco: **BANCO**
+- No. de cuenta: **0000000000**
+- Sucursal: **0000 Nombre de la sucursal**
+- CLABE: **000000000000000000**
+`;
+  const fichaText = c => '## ' + String(c.raw || '').replace(/^##\s*/, '').trim() + '\n';
+  function closeEditor() { state.editing = null; $('edBox').hidden = true; $('edMsg').textContent = ''; }
+  function openEditor(c) {
+    state.editing = { antes: c ? savedName(c.nombre) : null, nuevo: !c };
+    $('edTitle').textContent = c ? 'Editar la ficha de ' + c.nombre : 'Nuevo cliente';
+    $('edText').value = c ? fichaText(c) : NEW_FICHA;
+    $('edBox').hidden = false; $('edMsg').className = 'status'; $('edMsg').textContent = '';
+    edPreview(); $('edText').focus();
+  }
+  function edPreview() {
+    const c = firstClient($('edText').value), el = $('edSee');
+    if (!c) { el.className = 'status bad'; el.textContent = 'Todavía no se reconoce como ficha. Debe empezar con "## Cliente: NOMBRE" y traer el número de contrato o los obligados solidarios, igual que en el catálogo.'; return null; }
+    const cu = c.cuenta || {}, falta = [];
+    if (!c.contrato) falta.push('número de contrato'); if (!c.fechaContrato) falta.push('fecha de firma del contrato');
+    if (!c.domicilio) falta.push('domicilio'); if (!c.firmantes.length) falta.push('firmantes'); if (!(c.depositarios || []).length) falta.push('depositario'); if (!cu.clabe) falta.push('CLABE');
+    el.className = 'status' + (falta.length ? '' : ' good');
+    el.textContent = `Se reconoce: ${c.nombre} · contrato ${c.contrato || '—'} · ${c.os.length} obligado${c.os.length === 1 ? '' : 's'} solidario${c.os.length === 1 ? '' : 's'} · ${c.firmantes.length} firmante${c.firmantes.length === 1 ? '' : 's'} · depositario ${(c.depositarios || []).join(' y ') || '—'} · CLABE ${cu.clabe || '—'}.` + (falta.length ? ' No se encontró: ' + falta.join(', ') + '.' : '');
+    return c;
+  }
+  $('edText').addEventListener('input', edPreview);
+  $('fichaEdit').addEventListener('click', () => { if (state.fichaShown) openEditor(state.fichaShown); });
+  $('fichaNew').addEventListener('click', () => openEditor(null));
+  $('edCancel').addEventListener('click', closeEditor);
+  $('edFile').addEventListener('change', async () => {
+    const f = $('edFile').files[0]; if (!f) return;
+    const msg = $('edMsg'); msg.className = 'status';
+    try {
+      const r = await readAny(f, t => { msg.textContent = t; });
+      if (r.text.replace(/\s/g, '').length < 20) throw new Error('no se encontró texto');
+      $('edText').value = r.text.trim() + '\n'; msg.textContent = `Se cargó el texto de ${f.name}${r.how === 'ocr' ? ' (leído de imagen; revísalo)' : ''}. Revisa que quede con el formato de la ficha antes de guardar.`;
+    } catch (e) { msg.className = 'status bad'; msg.textContent = `No se pudo leer ${f.name} (${e && e.message ? e.message : 'formato no soportado'}).`; }
+    $('edFile').value = ''; edPreview();
+  });
+  $('edSave').addEventListener('click', async () => {
+    const c = edPreview(), msg = $('edMsg'); if (!c || !state.editing) return;
+    const antes = state.editing.antes;
+    if (!antes && savedName(c.nombre)) { msg.className = 'status bad'; msg.textContent = 'Ya hay un cliente guardado con ese nombre. Ábrelo y edítalo.'; return; }
+    msg.className = 'status'; msg.textContent = 'Guardando…'; $('edSave').disabled = true;
+    try { await store.save(c.nombre, $('edText').value.trim() + '\n', antes); state.pick = c.nombre; closeEditor(); await refreshSaved(); }
+    catch (e) { msg.className = 'status bad'; msg.textContent = storeMsg(e); }
+    $('edSave').disabled = false;
   });
 
   const VIEWS = ['validar', 'ficha', 'catalogo'];
@@ -570,7 +670,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   $('catForget').addEventListener('click', () => {
     try { localStorage.removeItem(KEY); } catch (e) { /* nada que borrar */ }
     state.demo = false; $('demoBanner').hidden = true;
-    state.cat = null; $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; rebuild();
+    state.baseText = ''; applyCatalog(); $('catStatus').className = 'status'; $('catStatus').textContent = 'Sin catálogo cargado.'; rebuild();
   });
   $('clearDemo').addEventListener('click', () => { leaveDemo(); rebuild(); });
   $('reset').addEventListener('click', () => { if (state.demo) leaveDemo(); else resetDocs(); rebuild(); });
