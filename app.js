@@ -20,7 +20,7 @@
   const allFields = () => ANEXO_FIELDS.concat(PAGARE_FIELDS);
 
   /* anexos / pagares: [{ name, text, how }] · pairs: [{ a, p, ci, clash, fields, r }] · tab: 'resumen' o índice de pairs */
-  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null };
+  const state = { cat: null, catInfo: '', demo: false, anexos: [], pagares: [], pairs: [], tab: 0, dataTouched: false, saved: [], fichas: {}, baseText: '', savedMsg: '', savedQ: '', pick: null, editing: null, fichaShown: null, factText: '' };
 
   /* ---------- campos (solo lectura) ---------- */
   function buildFields(host, defs) {
@@ -430,6 +430,12 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
       if (r.error && !(r.error.code === '23505' && ficha === undefined)) throw r.error;   // 23505 = ya estaba guardado
       if (!r.error && antes && !(r.data || []).length) throw { code: 'sin-cambio', message: 'sin cambio' };
     },
+    async addMany(rows) {
+      if (!rows.length) return;
+      if (!authOn) { lsSet(lsGet().concat(rows)); return; }
+      const { error } = await sb.from(TBL).insert(rows.map(r => ({ nombre: r.nombre, ficha: r.ficha, actualizado_el: new Date().toISOString() })));
+      if (error) throw error;
+    },
     async remove(nombre) {
       if (!authOn) { lsSet(lsGet().filter(r => nkey(r.nombre) !== nkey(nombre))); return; }
       const { error } = await sb.from(TBL).delete().eq('nombre', nombre);
@@ -447,9 +453,33 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
   const storeReady = () => !authOn || (sb && !document.body.classList.contains('gated'));
   const savedName = n => state.saved.find(x => nkey(x) === nkey(n)) || null;
   const firstClient = text => (V.parseCatalog(text || '').clientes || [])[0] || null;
+  const FKEY = '__FACTORANTE__';                                     // fila aparte con los "Datos constantes del Factorante"
+  const factBlock = text => { const p = String(text || '').replace(/\r/g, '').split(/^## /m).find(x => /^Datos constantes/i.test(x)); return p ? '## ' + p.trim() + '\n' : ''; };
+  /* Al cargar un catálogo, cada ficha se guarda para todas las computadoras. No pisa las fichas que ya estaban guardadas
+     (esas se cambian con Editar); solo agrega las nuevas y completa las que estaban guardadas solo con el nombre. */
+  async function shareCatalog(text) {
+    if (!storeReady()) return '';
+    try {
+      const rows = await store.list(), by = {}; rows.forEach(r => { by[nkey(r.nombre)] = r; });
+      const nuevos = [], completar = []; let ya = 0;
+      V.parseCatalog(text).clientes.forEach(c => {
+        const r = by[nkey(c.nombre)];
+        if (!r) { if (!nuevos.some(x => nkey(x.nombre) === nkey(c.nombre))) nuevos.push({ nombre: c.nombre, ficha: fichaText(c) }); }
+        else if (!r.ficha) completar.push([r.nombre, c]); else ya++;
+      });
+      const fb = factBlock(text);
+      if (fb && !rows.some(r => r.nombre === FKEY)) nuevos.push({ nombre: FKEY, ficha: fb });
+      await store.addMany(nuevos);
+      for (const [nombre, c] of completar) await store.save(nombre, fichaText(c), nombre);
+      await refreshSaved();
+      const n = nuevos.filter(x => x.nombre !== FKEY).length + completar.length;
+      return ` · ${n} ficha${n === 1 ? '' : 's'} guardada${n === 1 ? '' : 's'} para todas las computadoras` + (ya ? ` (${ya} ya estaba${ya === 1 ? '' : 'n'} guardada${ya === 1 ? '' : 's'} y no se ${ya === 1 ? 'cambió' : 'cambiaron'}; edítala${ya === 1 ? '' : 's'} en Ficha)` : '');
+    } catch (e) { return ' · No se guardaron para las demás computadoras: ' + storeMsg(e); }
+  }
   /* Catálogo en uso = catálogo cargado en esta computadora + fichas compartidas (cada una sustituye solo a su cliente). */
   function applyCatalog() {
-    const cat = V.parseCatalog(state.baseText || '');
+    const base = state.baseText || '';
+    const cat = V.parseCatalog(!factBlock(base) && state.factText ? state.factText + '\n' + base : base);
     Object.keys(state.fichas).forEach(k => {
       const c = firstClient(state.fichas[k]); if (!c) return;
       c.compartida = true;
@@ -462,8 +492,10 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     if (!storeReady()) return;
     try {
       const rows = await store.list();
-      state.saved = rows.map(r => r.nombre).sort((a, b) => a.localeCompare(b, 'es'));
-      state.fichas = {}; rows.forEach(r => { if (r.ficha) state.fichas[nkey(r.nombre)] = r.ficha; });
+      state.factText = (rows.find(r => r.nombre === FKEY) || {}).ficha || '';
+      const cli = rows.filter(r => r.nombre !== FKEY);
+      state.saved = cli.map(r => r.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+      state.fichas = {}; cli.forEach(r => { if (r.ficha) state.fichas[nkey(r.nombre)] = r.ficha; });
       state.savedMsg = '';
     } catch (e) { state.savedMsg = storeMsg(e); }
     applyCatalog(); rebuild();
@@ -474,7 +506,7 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     $('savedMeta').className = 'status' + (state.savedMsg ? ' bad' : '');
     const has = n => !!(state.cat && state.cat.clientes.some(k => nkey(k.nombre) === nkey(n)));
     $('savedList').innerHTML = list.map((n, i) => `<button type="button" class="saved" data-i="${i}" aria-current="${state.pick && nkey(state.pick) === nkey(n)}">${esc(n)}<span>${state.fichas[nkey(n)] ? 'Ficha compartida · ver' : has(n) ? 'Ver ficha' : 'Sin ficha en esta computadora'}</span></button>`).join('')
-      || `<div class="empty">${state.savedMsg ? '' : all.length ? 'Ningún cliente guardado coincide con la búsqueda.' : 'Todavía no hay clientes guardados. En Validar, usa "Guardar cliente".'}</div>`;
+      || `<div class="empty">${state.savedMsg ? '' : all.length ? 'Ningún cliente guardado coincide con la búsqueda.' : 'Todavía no hay fichas guardadas. Carga el catálogo en la pestaña Catálogo o usa Nuevo cliente.'}</div>`;
     $('savedList').querySelectorAll('button.saved').forEach(b => b.addEventListener('click', () => { state.pick = list[+b.dataset.i]; closeEditor(); render(); }));
   }
   $('savedForm').addEventListener('submit', e => { e.preventDefault(); state.savedQ = $('savedQ').value; renderSaved(); });
@@ -665,7 +697,12 @@ Suscriptor: PAPELERA DEMO DEL VALLE, S.A. DE C.V., representada por MARIANA EJEM
     const f = $('catFile').files[0]; if (!f) return;
     const text = await f.text();
     if (state.demo) leaveDemo();
-    if (loadCatalog(text, `${f.name} · cargado el ${new Date().toLocaleDateString('es-MX')}`, true)) { rebuild(); location.hash = 'validar'; show('validar'); }
+    if (loadCatalog(text, `${f.name} · cargado el ${new Date().toLocaleDateString('es-MX')}`, true)) {
+      rebuild();
+      const base = $('catStatus').textContent; $('catStatus').textContent = base + ' · guardando las fichas para todas las computadoras…';
+      $('catStatus').textContent = base + await shareCatalog(text);
+      location.hash = 'ficha'; show('ficha');
+    }
     $('catFile').value = '';
   });
   $('catForget').addEventListener('click', () => {

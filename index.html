@@ -247,7 +247,7 @@ button.saved[aria-current="true"]{border-color:var(--ink);background:#fff}
   <div class="view" id="view-validar">
     <section class="card" id="needCat" hidden>
       <h2>Primero carga el catálogo de fichas</h2>
-      <div class="empty">Se hace una sola vez en este navegador.</div>
+      <div class="empty">Se hace una sola vez: las fichas quedan guardadas para todas las computadoras.</div>
       <div class="row"><button class="primary" type="button" data-view="catalogo">Ir a Catálogo</button></div>
     </section>
 
@@ -341,7 +341,7 @@ button.saved[aria-current="true"]{border-color:var(--ink);background:#fff}
         <input id="catFile" type="file" hidden>
         <button id="catForget" type="button">Quitar catálogo</button>
       </div>
-      <div class="status">El catálogo se guarda solo en este navegador. Para cambiar la ficha de un solo cliente o dar de alta uno nuevo, usa Editar o Nuevo cliente en la pestaña Ficha: eso sí se ve en todas las computadoras.</div>
+      <div class="status">Al cargar el catálogo, cada ficha se guarda y se puede ver en la pestaña Ficha desde todas las computadoras. Las fichas que ya estaban guardadas no se pisan: para cambiar la de un cliente o dar de alta uno nuevo, usa Editar o Nuevo cliente en Ficha.</div>
     </section>
   </div>
 </div>
@@ -349,6 +349,6 @@ button.saved[aria-current="true"]{border-color:var(--ink);background:#fff}
 <script src="lib/pdf.min.js"></script>
 <script src="engine.js?v=11"></script>
 <script src="pdf-report.js?v=1"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
