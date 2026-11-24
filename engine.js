@@ -110,14 +110,17 @@
       const a = Math.max(0, w.i - 2), b = Math.min(doc.tokens.length - 1, w.last + 2);
       return { status: 'error', encontrado: snippet(doc, a, b), nota: 'El nombre no coincide exactamente. Lo más parecido en el documento se muestra en "Encontrado".' };
     }
-    return { status: 'error', encontrado: '— no aparece —', nota: 'No se encontró en el documento.' };
+    const hits = w.i >= 0 ? [...w.seen] : [];
+    return { status: 'error', encontrado: '— no aparece —', nota: hits.length
+      ? `Motivo: del nombre de la ficha solo se encontró ${hits.join(', ')} (${hits.length} de ${new Set(exp).size} palabras); el resto no está en el documento.`
+      : 'Motivo: ninguna palabra del nombre de la ficha está en el documento. Revisa que sea el cliente correcto.' };
   }
   function checkAddress(doc, addr, opts) {
     opts = opts || {};
     const exp = new Set(tokenize(addr).map(k => k.t).filter(t => !GENERIC.has(t)));
     if (!exp.size) return { status: 'na', encontrado: '', nota: 'La ficha no trae este dato.' };
     const w = findWindow(doc, exp);
-    if (w.i < 0 || w.score / exp.size < 0.34) return { status: 'error', encontrado: '— no aparece —', nota: 'No se encontró en el documento.' };
+    if (w.i < 0 || w.score / exp.size < 0.34) return { status: 'error', encontrado: '— no aparece —', nota: `Motivo: solo ${w.i < 0 ? 0 : w.score} de ${exp.size} datos del domicilio de la ficha están en el documento, así que no se reconoce como el mismo domicilio.` };
     const missing = [...exp].filter(t => !w.seen.has(t));
     const a = Math.max(0, w.i - (missing.length ? 3 : 0)), b = Math.min(doc.tokens.length - 1, w.last + (missing.length ? 3 : 0));
     const found = snippet(doc, a, b);
@@ -135,7 +138,17 @@
     if (doc.digits.includes(d)) return { status: 'ok', encontrado: value };
     const d2 = d.replace(/^0+/, '');
     if (d2.length >= 6 && doc.digits.includes(d2)) return { status: 'minor', encontrado: d2, nota: 'Aparece sin los ceros iniciales.' };
-    return { status: 'error', encontrado: '— no aparece —', nota: 'El número de la ficha no aparece en el documento.' };
+    // ¿hay un número parecido? (mismo largo y 1–2 dígitos distintos, o un dígito de más/de menos)
+    let near = null;
+    for (const m of doc.digits.match(/\d{6,}/g) || []) {
+      if (Math.abs(m.length - d.length) > 1) continue;
+      const dist = m.length === d.length ? [...m].filter((c, i) => c !== d[i]).length : lev(m, d);
+      if (dist <= 2 && (!near || dist < near.dist)) near = { m, dist, same: m.length === d.length };
+    }
+    if (near) return { status: 'error', encontrado: near.m, nota: near.same
+      ? `El documento trae un número parecido con ${near.dist} dígito${near.dist > 1 ? 's' : ''} distinto${near.dist > 1 ? 's' : ''} al de la ficha (${d}).`
+      : `El documento trae un número parecido, pero con ${near.m.length > d.length ? 'un dígito de más' : 'un dígito de menos'} respecto a la ficha (${d}).` };
+    return { status: 'error', encontrado: '— no aparece —', nota: `Motivo: ningún número del documento se parece al de la ficha (${d}).` };
   }
 
   /* ---------- números, fechas ---------- */
@@ -186,6 +199,77 @@
     if (rest) p.push(w999(rest));
     return p.join(' ');
   }
+  /* --- explicación de por qué no coincide la cifra en letra --- */
+  const WVAL = (() => {
+    const v = { CIEN: 100, UNO: 1 };
+    U.forEach((w, n) => { if (w) v[w] = n; });
+    D.forEach((w, n) => { if (w) v[w] = n * 10; });
+    C.forEach((w, n) => { if (w) v[w] = n * 100; });
+    return v;
+  })();
+  // Lee una cifra escrita en letra; null si alguna palabra no es un número.
+  function wordsToNum(toks) {
+    let total = 0, sub = 0, cur = 0, any = false;
+    for (const t of toks) {
+      if (t === 'Y') continue;
+      if (t === 'MIL') { sub += (cur || 1) * 1000; cur = 0; }
+      else if (t === 'MILLON' || t === 'MILLONES') { total += (sub + cur || 1) * 1e6; sub = 0; cur = 0; }
+      else if (WVAL[t] !== undefined) cur += WVAL[t];
+      else return null;
+      any = true;
+    }
+    return any ? total + sub + cur : null;
+  }
+  function lev(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[a.length][b.length];
+  }
+  // Diferencias entre lo que dice (a) y lo que debe decir (b), por tramos.
+  function diffRuns(a, b) {
+    const n = a.length, m = b.length, L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const runs = []; let i = 0, j = 0, cur = null;
+    const flush = () => { if (cur) { runs.push(cur); cur = null; } };
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) { flush(); i++; j++; }
+      else { cur = cur || { dice: [], debe: [] }; if (j >= m || (i < n && L[i + 1][j] >= L[i][j + 1])) cur.dice.push(a[i++]); else cur.debe.push(b[j++]); }
+    }
+    flush();
+    return runs;
+  }
+  function explainLetra(doc, exp, cifra) {
+    const T = doc.tokens, base = `La cifra en letra no coincide con la cifra en número (${money(cifra)}). `;
+    const w = findWindow(doc, new Set(exp.filter(t => t !== 'Y')));
+    if (w.i < 0 || w.score < 2) return { encontrado: '— no aparece —', nota: base + 'Motivo: no se encontró ninguna cantidad escrita con letra en el Pagaré.' };
+    // inicio: si hay un paréntesis justo antes, la cifra en letra empieza ahí
+    let a = w.i;
+    const par = doc.raw.lastIndexOf('(', T[a].s);
+    if (par >= 0 && T[a].s - par < 40) while (a > 0 && T[a - 1].s > par) a--;
+    // fin: hasta antes de "PESOS" (o hasta la última palabra reconocida)
+    let b = w.last;
+    for (let k = a; k < Math.min(T.length, a + exp.length + 10); k++) if (/^(PESOS?|DOLARES|USD)$/.test(T[k].t)) { b = k - 1; break; }
+    if (b < a) b = w.last;
+    const dice = T.slice(a, b + 1).map(k => k.t);
+    const encontrado = snippet(doc, a, Math.min(T.length - 1, b + 3));
+    const q = x => '«' + x.join(' ') + '»';
+    const motivos = diffRuns(dice, exp).map(r => {
+      if (r.dice.length && r.debe.length) {
+        if (r.dice.join('') === r.debe.join('')) return `palabras mal separadas: dice ${q(r.dice)} y debe decir ${q(r.debe)}`;
+        if (lev(r.dice.join(' '), r.debe.join(' ')) <= 2) return `error de ortografía: dice ${q(r.dice)} y debe decir ${q(r.debe)}`;
+        return `dice ${q(r.dice)} y debe decir ${q(r.debe)}`;
+      }
+      return r.debe.length ? `falta ${q(r.debe)}` : `sobra ${q(r.dice)}`;
+    });
+    const n = wordsToNum(dice);
+    let extra = '';
+    if (n !== null && n !== Math.floor(r2(cifra))) extra = ` La letra dice ${money(n).replace(/\.00$/, '')}, que es otra cantidad.`;
+    else if (n !== null) extra = ' La cantidad es la misma, pero no está escrita en la forma estándar.';
+    return { encontrado, nota: base + 'Motivo: ' + (motivos.length ? motivos.join('; ') : 'la redacción no es la esperada') + '.' + extra };
+  }
   function checkLetra(doc, cifra) {
     const ent = Math.floor(r2(cifra)), cents = String(Math.round((r2(cifra) - ent) * 100)).padStart(2, '0');
     const words = numToWords(ent);
@@ -193,7 +277,7 @@
     const variants = [words, words.replace(/^MIL\b/, 'UN MIL'), words.replace(/ MILLONES? MIL\b/, m => m.replace(' MIL', ' UN MIL'))];
     let i = -1, used = null;
     for (const v of variants) { const exp = tokenize(v).map(k => k.t); i = findContiguous(doc, exp); if (i >= 0) { used = exp; break; } }
-    if (i < 0) return { status: 'error', esperado, encontrado: '— no aparece —', nota: 'La cifra en letra del Pagaré no corresponde a la cifra en número.' };
+    if (i < 0) return Object.assign({ status: 'error', esperado }, explainLetra(doc, tokenize(words).map(k => k.t), cifra));
     const tail = doc.tokens.slice(i + used.length, i + used.length + 4).map(k => k.t);
     const found = snippet(doc, i, Math.min(doc.tokens.length - 1, i + used.length + 3));
     const centsOk = tail.includes(String(+cents)) && tail.includes('100');
@@ -540,7 +624,7 @@
     return { checks, pct, evaluados: ev.length, correctos: count('ok') + minors, errors, reviews, pending, minors, veredicto, anexo: part('anexo'), pagare: part('pagare'), interno: part('interno') };
   }
 
-  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress };
+  const API = { parseCatalog, detectClient, extractFields, validate, tasaRule, numToWords, parseDate, fmtDate, money, num, makeDoc, checkName, checkAddress, checkLetra, checkDigits };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   root.VAL = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
