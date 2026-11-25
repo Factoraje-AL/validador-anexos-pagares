@@ -30,7 +30,7 @@ body{background:#070503;color:var(--ink);font-family:var(--sans);font-size:15px;
 /* fondo: video de partículas doradas, fijo detrás de toda la página, atenuado para que las tarjetas de vidrio se lean bien */
 .bgvid{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#070503 url(fondo.jpg) center/cover no-repeat}
 .bgvid video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.bgvid::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.42)}
+.bgvid::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:reduce){.bgvid video{display:none}}
 /* acceso (misma composición que el acceso de Atlas: marca arriba, titular abajo a la izquierda, formulario de vidrio oscuro a la derecha) */
 body.gated>:not(#gate):not(#gatebg):not(script){display:none!important}
