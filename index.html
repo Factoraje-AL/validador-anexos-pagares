@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Validador de Anexos y Pagarés</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* Plan: mismo mundo visual que All For One. Fondo piedra, barra con pestañas arriba, portada oscura con título serif,
    tarjetas de vidrio esmerilado. Una sola cosa por pantalla; el detalle queda plegado. Tema único (claro) a propósito. */
@@ -217,6 +217,46 @@ details.hrow[open]>summary{padding-bottom:8px;border-bottom:1px solid var(--line
 .mini b{font-size:14.5px}
 .rules{margin:0;padding-left:18px;font-size:13.5px;display:flex;flex-direction:column;gap:6px}
 @media (prefers-reduced-motion:no-preference){.ring circle.v{transition:stroke-dashoffset .5s ease}}
+
+/* ================= ESTILO OSCURO =================
+   Fondo negro con el brillo naranja del video en las esquinas, recuadros de línea blanca con esquinas rectas,
+   títulos en negrita (Poppins) y encabezados en naranja. Solo aplica a la aplicación (menú, encabezado y contenido);
+   la pantalla de acceso conserva su estilo. */
+.nav,.phero,.wrap{color-scheme:dark;--ink:#fff;--ink-2:#ECE9E3;--muted:#B9B4AC;--glass:rgba(6,5,5,.5);--glass-strong:rgba(255,255,255,.035);--edge:rgba(255,255,255,.9);--line:rgba(255,255,255,.26);--line-2:rgba(255,255,255,.62);
+  --fill:#fff;--fill-ink:#050505;--ok:#7BD9A2;--ok-bg:rgba(123,217,162,.13);--warn:#F2C766;--warn-bg:rgba(242,199,102,.13);--bad:#FF8C8C;--bad-bg:rgba(255,120,120,.12);--idle:#B9B4AC;--idle-bg:rgba(255,255,255,.08);
+  --shadow:none;--r:0px;--r-card:0px;--display:"Poppins","DM Sans","Helvetica Neue",Arial,sans-serif;--sans:"Poppins","DM Sans","Helvetica Neue",Arial,sans-serif;--head:#F5922E;
+  color:var(--ink);font-family:var(--sans)}
+body{background:#050505}
+.bgvid::after{background:radial-gradient(ellipse 78% 74% at 50% 50%,rgba(5,5,5,.97) 0,rgba(5,5,5,.93) 52%,rgba(5,5,5,.45) 82%,rgba(5,5,5,.1) 100%)}
+.bgvid video{filter:saturate(1.35) brightness(1.5) hue-rotate(12deg)}
+.wrap::before{display:none}
+.nav{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:0;position:relative}
+.nav *{color:#fff;text-transform:uppercase;letter-spacing:.04em}
+.nav .navbtn{font-size:15px;font-weight:400}
+.nav .navbtn[aria-current="page"]{font-weight:600}
+.phero{background:none;text-align:left;padding:26px 0 70px;min-height:0;max-width:1040px;margin:0 auto;display:block}
+.phero::before,.phero::after,.phero video{display:none}
+.phero .ptxt{padding:0 18px;text-shadow:none;opacity:1;transform:none}
+.phero .pq{font-family:var(--sans);font-style:normal;letter-spacing:.14em;font-size:13px;text-transform:uppercase;margin:0 0 6px}
+.phero h1{font-family:var(--display);font-weight:700;font-size:clamp(38px,7.2vw,74px);text-transform:uppercase;letter-spacing:0;line-height:1;color:var(--head)}
+.phero .ptag{justify-content:flex-start}
+.phero .ptag i:first-child{display:none}
+.wrap .card{border:1px solid rgba(255,255,255,.9);-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:0}
+.wrap :is(.card h2,.sechead h2,.tile .big,.hname){font-family:var(--display);font-weight:700;text-transform:uppercase;letter-spacing:0;color:var(--head)}
+.wrap .tile{border-radius:0;border:1px solid rgba(255,255,255,.75)}
+.wrap :is(label.tile:hover,label.tile.over,label.dropall:hover,label.dropall.over,button.sumrow:hover,button.saved:hover,button.saved[aria-current="true"]){background:rgba(255,255,255,.1)}
+:is(.nav,.phero,.wrap) :is(input,select,textarea){background:rgba(255,255,255,.06);color:#fff;border-radius:0}
+:is(.nav,.phero,.wrap) :is(input[readonly],textarea[readonly]){background:rgba(255,255,255,.03)}
+:is(.nav,.phero,.wrap) :is(button,.btn){background:transparent;color:#fff;border-radius:0;border-color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.06em;font-size:12.5px}
+:is(.nav,.phero,.wrap) :is(.btn.primary,button.primary){background:#fff;color:#050505;border-color:#fff}
+:is(.nav,.phero,.wrap) :is(button:disabled,.btn[aria-disabled="true"]){opacity:.55}
+.wrap button.del{color:var(--bad);border-color:rgba(255,140,140,.6)}
+.wrap button.del:hover{background:var(--bad);color:#050505;border-color:var(--bad)}
+.wrap button.saved{text-transform:none;letter-spacing:0;font-size:14px}
+.wrap button.sumrow{text-transform:none;letter-spacing:0;font-size:14px}
+.wrap .chip{background:rgba(255,255,255,.1);border-radius:0;color:#fff}
+.wrap .chip button{border:0;text-transform:none}
+.wrap :is(.issue,.mini,.edbox,details.hrow,.fold,table,.dtabs button){border-radius:0}
 </style>
 </head>
 <body>
