@@ -257,6 +257,13 @@ body{background:#050505}
 .wrap .chip{background:rgba(255,255,255,.1);border-radius:0;color:#fff}
 .wrap .chip button{border:0;text-transform:none}
 .wrap :is(.issue,.mini,.edbox,details.hrow,.fold,table,.dtabs button){border-radius:0}
+
+/* entrada del encabezado: las palabras suben y aparecen una tras otra (sin logotipo) */
+.phero .ptxt{position:relative;z-index:1;opacity:1;transform:none;transition:none}
+.phero .ptxt>*{animation:wordIn .9s cubic-bezier(.2,.7,.2,1) both}
+.phero .ptxt>.pq{animation-delay:.5s}.phero .ptxt>h1{animation-delay:.7s}.phero .ptxt>.ptag{animation-delay:1.05s}
+@keyframes wordIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.phero .ptxt>*{animation:none}}
 </style>
 </head>
 <body>
