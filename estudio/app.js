@@ -9,7 +9,7 @@
   const LOCAL = /claude|anthropic|^localhost$|^127\.0\.0\.1$/i.test(location.hostname);
   const MAX_PAGINAS = 80, MAX_DETALLE = 14;
   let sb = null;
-  const state = { archivos: [], paginas: [], estudio: null, actual: 0, plantilla: null, seq: 0 };
+  const state = { archivos: [], paginas: [], estudio: null, actual: 0, plantilla: null, seq: 0, forzar: false };
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const money = n => Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -142,7 +142,34 @@
     cs.splice(1, 0, { id: 'dudas', titulo: 'Dudas resueltas', ok: !dudas.length, detalle: dudas.length ? dudas.length + ' cuenta(s) esperan tu confirmación' : 'Listo' });
     return cs;
   }
-  const todoOk = () => !!state.estudio && state.estudio.periodos.every(p => revisar(p).every(c => c.ok));
+  /* Las preguntas (cuentas sin renglón o en duda) siempre bloquean. Un estado del cliente que no cuadra se puede generar
+     si el analista lo pide: la diferencia queda visible en las celdas de cuadre de la propia hoja Datos. */
+  const ARITMETICA = id => id === 'balance' || id === 'resultados' || id.startsWith('vs_');
+  const fallas = () => state.estudio ? state.estudio.periodos.flatMap(p => revisar(p).filter(c => !c.ok).map(c => c.id)) : ['sin'];
+  const todoOk = () => { const f = fallas(); return !f.length || (state.forzar && f.every(ARITMETICA)); };
+  function decidir(claveCuenta, fila, etiqueta) {
+    for (const q of state.estudio.periodos) for (const o of q.cuentas) if (M.clave(o.nombre) === claveCuenta) Object.assign(o, { fila, origen: 'tu', confirmado: true, motivo: etiqueta || '' });
+  }
+  function pintarPreguntas() {
+    const g = new Map();
+    for (const p of state.estudio.periodos) for (const c of p.cuentas) if (enDuda(c)) {
+      const k = M.clave(c.nombre); if (!g.has(k)) g.set(k, { k, nombre: c.nombre, motivo: c.motivo, fila: c.fila, pagina: c.pagina, importes: [] });
+      g.get(k).importes.push(p.etiqueta + ': ' + money(c.importe));
+    }
+    $('preguntas').innerHTML = g.size ? [...g.values()].map(q => `<div class="q" data-k="${esc(q.k)}"><b>¿Dónde va "${esc(q.nombre)}"?</b>
+        <small>${esc(q.importes.join(' · '))}</small>${q.motivo ? `<small>${esc(q.motivo)}</small>` : ''}
+        <select>${OPCIONES}</select>
+        <div class="row">${q.fila != null ? '<button class="primary" data-a="ok" type="button">Confirmar la propuesta</button>' : ''}${state.paginas[q.pagina] ? `<button data-a="ver" data-p="${q.pagina}" type="button">Ver página</button>` : ''}</div></div>`).join('')
+      : '<div class="qok">Sin preguntas pendientes: todas las cuentas tienen renglón.</div>';
+    for (const d of $('preguntas').querySelectorAll('.q')) { const q = g.get(d.dataset.k); d.querySelector('select').value = q.fila == null ? '' : String(q.fila); }
+  }
+  $('preguntas').addEventListener('change', e => { const d = e.target.closest('.q'); if (d && e.target.value) { decidir(d.dataset.k, Number(e.target.value)); pintar(); } });
+  $('preguntas').addEventListener('click', e => {
+    const b = e.target.closest('button[data-a]'); if (!b) return; const d = b.closest('.q');
+    if (b.dataset.a === 'ok') { decidir(d.dataset.k, Number(d.querySelector('select').value)); pintar(); }
+    else { const pg = state.paginas[+b.dataset.p]; $('visor-t').textContent = pg.archivo + ' · página ' + pg.n; $('visor-img').src = pg.grande; $('visor').showModal(); }
+  });
+  $('forzar').addEventListener('change', e => { state.forzar = e.target.checked; pintarChecks(); });
   const TAGS = { memoria: ['mem', 'Memoria del cliente'], regla: ['regla', 'Reglamento'], tu: ['tu', 'Elegido por ti'] };
   function pintar() {
     const est = state.estudio, p = est.periodos[state.actual];
@@ -169,15 +196,18 @@
     }
     $('rows').innerHTML = html;
     for (const tr of $('rows').querySelectorAll('tr[data-id]')) { const c = p.cuentas.find(x => x.id === +tr.dataset.id); tr.querySelector('select').value = c.fila == null ? '' : String(c.fila); }
-    pintarChecks();
+    pintarPreguntas(); pintarChecks();
   }
   function pintarChecks() {
     const est = state.estudio, p = est.periodos[state.actual];
     $('checks').innerHTML = revisar(p).map(c => `<div class="check ${c.ok ? 'ok' : 'no'}"><b>${esc(c.titulo)}</b><small>${esc(c.detalle)}</small></div>`).join('') +
       M.avisos(est.periodos).map(a => `<div class="aviso">${esc(a)}</div>`).join('');
     est.periodos.forEach((q, i) => { const d = $('tabs').children[i]; if (d) d.querySelector('.dot').className = 'dot ' + (revisar(q).every(c => c.ok) ? 'ok' : ''); });
+    const f = fallas(), soloAritmetica = f.length > 0 && f.every(ARITMETICA);
+    $('forzarrow').hidden = !soloAritmetica; if (!soloAritmetica && state.forzar) { state.forzar = false; $('forzar').checked = false; }
+    if (soloAritmetica) $('todas').open = true;
     const ok = todoOk(); $('generar').disabled = !ok;
-    if (!ok) msg('msg3', 'Falta resolver lo marcado en rojo en la revisión.'); else if (/^Falta/.test($('msg3').textContent)) msg('msg3', '');
+    if (!ok) msg('msg3', soloAritmetica ? 'Los estados no cuadran: revisa los importes en rojo o marca la casilla para generar así.' : 'Falta responder las preguntas de la revisión.'); else if (/^(Falta|Los estados)/.test($('msg3').textContent)) msg('msg3', '');
   }
   $('tabs').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) { state.actual = +b.dataset.i; pintar(); } });
   $('empresa').addEventListener('change', async () => { state.estudio.empresa = $('empresa').value.trim(); await aplicarCriterios(state.estudio); pintar(); });
