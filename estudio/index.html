@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio · Hoja Datos</title>
+<link rel="icon" href="data:,">
+<style>
+/* Mismo mundo visual que el validador: página negra con resplandor ámbar, tarjetas de vidrio con borde fino, títulos en mayúsculas.
+   Un paso por tarjeta: documentos, revisión, descarga. */
+:root{
+  color-scheme:dark;
+  --bg:#060504; --ink:#f6f3ec; --muted:rgba(246,243,236,.66); --faint:rgba(246,243,236,.42);
+  --glass:rgba(22,19,14,.58); --glass-2:rgba(255,255,255,.06); --edge:rgba(255,255,255,.16); --edge-2:rgba(255,255,255,.3);
+  --amber:#f2a93b; --amber-ink:#14100a;
+  --ok:#6fd39a; --ok-bg:rgba(60,170,110,.16); --bad:#ff9a8a; --bad-bg:rgba(214,72,52,.2); --warn:#ffd68a; --warn-bg:rgba(242,169,59,.16);
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
+  --r:10px; --r-card:20px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:clip}
+.glow{position:fixed;inset:0;z-index:0;pointer-events:none;background:
+  radial-gradient(48% 42% at 88% 4%,rgba(242,169,59,.26),transparent 70%),
+  radial-gradient(42% 40% at 6% 96%,rgba(242,120,40,.16),transparent 70%)}
+button{font:inherit;cursor:pointer;color:var(--ink);background:var(--glass-2);border:1px solid var(--edge-2);border-radius:var(--r);padding:9px 16px;font-weight:550}
+button:hover{background:rgba(255,255,255,.12)}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--amber);border-color:var(--amber);color:var(--amber-ink);font-weight:650}
+button.primary:hover:not(:disabled){background:#ffbb52}
+button.link{background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px;font-weight:400;color:var(--muted)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+input,select{font:inherit;color:var(--ink);background:rgba(0,0,0,.35);border:1px solid var(--edge);border-radius:8px;padding:7px 9px;min-width:0;font-variant-numeric:tabular-nums}
+select{max-width:100%}
+select option,select optgroup{background:#17140f;color:var(--ink)}
+
+/* barra */
+.nav{position:sticky;top:0;z-index:20;background:rgba(8,7,5,.72);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);border-bottom:1px solid var(--edge)}
+.navin{max-width:1180px;margin:0 auto;padding:0 22px;min-height:58px;display:flex;align-items:center;gap:18px}
+.brand{font-weight:700;letter-spacing:.34em;text-transform:uppercase;font-size:13px}
+.brand span{color:var(--amber)}
+.navnote{margin-left:auto;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+@media (max-width:700px){.navnote{display:none}}
+
+/* portada */
+.hero{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:54px 22px 26px}
+.hero h1{margin:0;font-size:clamp(34px,5.4vw,60px);line-height:1.02;font-weight:800;letter-spacing:-.01em;text-transform:uppercase;text-wrap:balance}
+.hero h1 em{font-style:normal;color:var(--amber)}
+.hero p{margin:14px 0 0;max-width:62ch;color:var(--muted);font-size:16px}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 90px;display:flex;flex-direction:column;gap:18px}
+.card{background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);border:1px solid var(--edge);border-radius:var(--r-card);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 30px 80px rgba(0,0,0,.5);padding:24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card>header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.step{font-size:11px;font-weight:700;letter-spacing:.24em;color:var(--amber-ink);background:var(--amber);border-radius:999px;padding:2px 10px}
+h2{margin:0;font-size:19px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.sub{color:var(--muted);font-size:14px;margin:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grow{flex:1}
+
+/* soltar archivos */
+label.drop{cursor:pointer;border:1.5px dashed var(--edge-2);border-radius:16px;padding:34px 20px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;background:var(--glass-2);transition:border-color .15s,background .15s}
+label.drop:hover,label.drop.over{border-color:var(--amber);background:rgba(242,169,59,.08)}
+label.drop .big{font-size:24px;font-weight:750}
+label.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge-2);border-radius:999px;padding:3px 6px 3px 12px;font-size:12.5px;max-width:100%}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{width:22px;height:22px;padding:0;border:0;border-radius:50%;background:none;color:var(--muted);line-height:1}
+.chip button:hover{background:var(--bad-bg);color:var(--bad)}
+.msg{font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}
+.msg.bad{color:var(--bad)} .msg.good{color:var(--ok)}
+.bar{height:6px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--amber);transition:width .3s}
+
+/* periodos */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border-radius:999px;padding:6px 16px;font-size:13.5px;display:inline-flex;gap:8px;align-items:center}
+.tab[aria-selected="true"]{background:var(--ink);color:#14100a;border-color:var(--ink)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad)} .dot.ok{background:var(--ok)}
+.tab[aria-selected="true"] .dot{box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
+@media (max-width:960px){.cols{grid-template-columns:1fr}}
+.checks{display:flex;flex-direction:column;gap:8px;position:sticky;top:76px}
+.check{border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:var(--glass-2);display:flex;flex-direction:column;gap:2px}
+.check b{font-size:13px;display:flex;gap:8px;align-items:center}
+.check small{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.check.ok{border-color:rgba(111,211,154,.4)} .check.ok b::before{content:"✓";color:var(--ok)}
+.check.no{border-color:rgba(255,154,138,.55);background:var(--bad-bg)} .check.no b::before{content:"✕";color:var(--bad)}
+.aviso{border:1px solid rgba(242,169,59,.5);background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:10px 12px;font-size:12.5px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.meta label{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.meta input{width:100%}
+
+/* tabla de cuentas */
+.tblwrap{overflow-x:auto;border:1px solid var(--edge);border-radius:14px}
+table{border-collapse:collapse;width:100%;min-width:600px}
+th{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);text-align:left;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--edge);position:sticky;top:0;background:rgba(18,15,11,.96)}
+td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:middle;font-size:13.5px}
+tr:last-child td{border-bottom:0}
+tr.sec td{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;background:rgba(242,169,59,.07);padding:6px 12px}
+tr.duda td{background:rgba(214,72,52,.13)}
+td.n{text-align:right;white-space:nowrap}
+td.n input{width:124px;text-align:right}
+td .name{font-weight:550;overflow-wrap:anywhere}
+td .why{display:block;font-size:11.5px;color:var(--faint)}
+.tag{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;border-radius:999px;padding:1px 8px;border:1px solid var(--edge-2);color:var(--muted);white-space:nowrap}
+.tag.mem{border-color:rgba(111,211,154,.5);color:var(--ok)} .tag.regla{border-color:rgba(242,169,59,.6);color:var(--amber)} .tag.duda{border-color:rgba(255,154,138,.7);color:var(--bad)} .tag.tu{border-color:var(--ink);color:var(--ink)}
+td select{width:100%;min-width:190px}
+th:first-child,td:first-child{min-width:170px}
+td.act{width:150px}
+td.act>*{margin:2px 2px 2px 0}
+th{white-space:nowrap}
+button.pg{padding:2px 8px;font-size:11.5px;border-radius:999px;color:var(--muted);border-color:var(--edge)}
+.neg{color:var(--warn);font-size:11px;margin-right:4px}
+
+/* visor de página */
+dialog{border:1px solid var(--edge-2);border-radius:16px;background:#0d0b08;color:var(--ink);padding:14px;max-width:min(96vw,1100px)}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog img{max-width:100%;max-height:80vh;display:block;border-radius:8px;background:#fff}
+
+/* acceso */
+body.gated>:not(#gate):not(.glow):not(script){display:none!important}
+.gate{position:relative;z-index:1;min-height:100vh;display:grid;place-items:center;padding:24px}
+.gate-card{width:min(440px,100%);padding:32px;border-radius:18px;background:var(--glass);border:1px solid var(--edge);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);display:flex;flex-direction:column;gap:16px}
+.gate-card h1{margin:0;font-size:26px;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.gate-card h1 em{font-style:normal;color:var(--amber)}
+.gate-card label{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.gate-card input{height:46px;font-size:16px}
+.gate-card .go{height:50px;font-size:16px}
+</style>
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+
+<div id="gate" class="gate" hidden>
+  <form class="gate-card" id="gate-form" novalidate>
+    <div class="brand">Active Leasing <span>Riesgos</span></div>
+    <h1>Estudio · <em>Hoja Datos</em></h1>
+    <p class="sub">Entra con la misma cuenta del validador de Anexos y Pagarés.</p>
+    <label>Correo <input type="email" id="g-email" autocomplete="email" required></label>
+    <label>Contraseña <input type="password" id="g-pass" autocomplete="current-password" required></label>
+    <button class="primary go" id="g-go" type="submit">Entrar</button>
+    <div class="msg bad" id="g-err" role="status"></div>
+  </form>
+</div>
+
+<nav class="nav" aria-label="Sitio">
+  <div class="navin">
+    <div class="brand">Active Leasing <span>Estudio</span></div>
+    <div class="navnote">Lee con IA · comprueba con aritmética · no toca fórmulas</div>
+    <button id="signout" type="button" hidden>Salir</button>
+  </div>
+</nav>
+
+<header class="hero">
+  <h1>De los estados financieros <em>a la hoja Datos.</em></h1>
+  <p>Sube el balance general y el estado de resultados del cliente. El sitio lee las cuentas, propone el renglón de Datos de cada una, comprueba los cuadres y entrega el Estudio con Datos lleno, sin tocar una sola fórmula.</p>
+</header>
+
+<main class="wrap">
+  <section class="card" id="paso1">
+    <header><span class="step">1</span><h2>Documentos del cliente</h2></header>
+    <label class="drop" id="drop">
+      <span class="big">Suelta aquí los estados financieros</span>
+      <span class="sub">PDF digital, escaneado o foto. Puedes subir varios archivos: un año por archivo o todos juntos.</span>
+      <input type="file" id="files" accept="application/pdf,image/*" multiple>
+    </label>
+    <div class="chips" id="chips"></div>
+    <div class="bar" id="bar" hidden><i></i></div>
+    <div class="row">
+      <button class="primary" id="leer" type="button" disabled>Leer estados</button>
+      <button id="demo" type="button" hidden>Cargar ejemplo ficticio</button>
+      <span class="msg grow" id="msg1" role="status"></span>
+    </div>
+  </section>
+
+  <section class="card" id="paso2" hidden>
+    <header><span class="step">2</span><h2>Revisión</h2><p class="sub grow">Confirma el renglón de cada cuenta. Las filas en rojo necesitan tu decisión; nada se genera hasta que todos los cuadres estén en verde.</p></header>
+    <div class="meta">
+      <label>Cliente <input id="empresa" type="text"></label>
+    </div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="cols">
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div class="meta" id="pmeta"></div>
+        <div class="tblwrap"><table><thead><tr><th>Cuenta del cliente</th><th style="text-align:right">Importe</th><th>Renglón de Datos</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+        <div class="row"><button id="add" type="button">Agregar cuenta</button></div>
+      </div>
+      <aside class="checks" id="checks"></aside>
+    </div>
+  </section>
+
+  <section class="card" id="paso3" hidden>
+    <header><span class="step">3</span><h2>Estudio</h2></header>
+    <div class="row">
+      <button class="primary" id="generar" type="button" disabled>Descargar Estudio con Datos lleno</button>
+      <label class="row" id="tplrow" hidden style="gap:8px"><span class="msg">Plantilla en blanco:</span><input type="file" id="tpl" accept=".xlsx"></label>
+      <span class="msg grow" id="msg3" role="status"></span>
+    </div>
+    <p class="sub">El archivo es la plantilla oficial con las celdas de captura de Datos, la fecha y los meses del último periodo. Excel recalcula todo al abrirlo.</p>
+  </section>
+</main>
+
+<dialog id="visor"><form method="dialog" class="row" style="justify-content:space-between;margin-bottom:10px"><b id="visor-t"></b><button>Cerrar</button></form><img id="visor-img" alt=""></dialog>
+
+<script src="../lib/pdf.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<script src="motor.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
