@@ -32,11 +32,29 @@ LECTURA
 
 CLASIFICACIÓN
 - Para cada cuenta propone "fila": el número de fila del catálogo de renglones de Datos que se te da. Usa solo filas del catálogo.
-- Criterios base: Clientes → Cuentas por Cobrar Vigente. Bancos y caja → Caja y bancos. Deudores diversos → No Operativo Deudores Diversos. Proveedores → Proveedores.
-  Acreedores diversos, anticipos de clientes, sueldos y provisiones de nómina o seguridad social → Acreedores. PTU por pagar → PTU del pasivo.
-  Depósitos en garantía → Diferido Depósitos en Garantía. Capital social fijo y variable → Capital Pagado. Resultados de ejercicios anteriores → Utilidades Retenidas.
-  Resultado del ejercicio → Utilidad del Ejercicio. Gastos financieros → Intereses Pagados. Productos financieros → Intereses Ganados. ISR y PTU del estado de resultados → Impuestos.
-- Si se te dan "criterios de la casa", tienen prioridad sobre los criterios base y sobre tu juicio.
+- Criterios de la casa (respondidos por el área de riesgos el 26/11/2026; aplícalos siempre):
+  Activo: Bancos y caja → Caja y bancos (19). Clientes y "otras cuentas por cobrar" → Cuentas por Cobrar Vigente (22). Inventarios o almacén en una sola cuenta → Artículos terminados (31).
+  Anticipo a proveedores → Inventario Anticipo a proveedores (32). IVA acreditable o IVA por acreditar → Pagos Anticipados e Impuestos IVA (39).
+  "Impuestos acreditables" sin decir cuál, pagos provisionales de ISR y contribuciones o impuestos a favor → Pagos Anticipados e Impuestos ISR (38).
+  Pagos anticipados presentados dentro del activo circulante → Pagos Anticipados e Impuestos Otros (40); presentados en diferido → Diferido Pagos Anticipados (77).
+  Deudores diversos → No Operativo Deudores Diversos (43). Equipo de transporte o vehículos → Maquinaria y Equipo Otros (63). Equipo de cómputo y mobiliario → Equipo de Oficina (62).
+  Maquinaria, "otra maquinaria y equipo" y equipo especializado → Maquinaria (61). Construcciones → Inmuebles Construcción en Proceso (58).
+  Adaptaciones y mejoras y gastos de instalación → Maquinaria y Equipo Otros (63). Depósitos en garantía → Diferido Depósitos en Garantía (79).
+  Pasivo: Proveedores → Proveedores (93). Acreedores diversos, anticipo de clientes, sueldos y provisiones de nómina o seguridad social → Acreedores (94).
+  Impuestos por pagar, impuestos y derechos por pagar e impuestos retenidos → ISR del pasivo (95). IVA trasladado o impuestos trasladados → IVA del pasivo (97). PTU por pagar → PTU (96).
+  Crédito bancario a corto plazo, aunque el cliente lo llame "cuentas por pagar a corto plazo" → Pasivo Financiero Bancario (88). Crédito a corto plazo con financieras no bancarias o tarjetas → Pasivo Financiero No Bancario (89).
+  Crédito a largo plazo con bancos → Pasivo Financiero LP Bancario (107); con financieras no bancarias → LP No Bancario (108).
+  Capital: capital social fijo y variable → Capital Pagado (119). Aportaciones para futuros aumentos de capital → Aumento de Capital (120).
+  Resultados de ejercicios anteriores → Utilidades Retenidas (124), con las pérdidas restando. Resultado del ejercicio → Utilidad del Ejercicio (125).
+  Resultados: Ventas e ingresos → Ventas (134); "otros ingresos" presentados antes de ventas netas se suman a Ventas (134). Devoluciones y descuentos → Descuento Sobre Ventas (135).
+  Costo de ventas en un solo importe → Costo de Ventas Generales (140). Empresa de servicios sin costo de ventas: el costo queda en cero y todo va a gastos.
+  "Gastos de operación" o "gastos generales" en un solo importe → Gastos de Administración (146). Gastos de venta → Gastos de Venta (145).
+  "Depreciación y amortización" en un solo importe → Depreciación (149). "Otros productos" y otros ingresos después de la utilidad de operación → Otros Ingresos (147).
+  Productos financieros → Intereses Ganados (155). Gastos financieros → Intereses Pagados (156). ISR y PTU del estado de resultados → Impuestos (159 y 160).
+  Gastos de fabricación: no hay criterio definido; propón Gastos de Venta (145) con confianza "baja" para que el analista decida.
+- Si el estado financiero firmado y la balanza de comprobación clasifican distinto una cuenta, manda el estado financiero firmado.
+- Cuando una sola cuenta mezcla acreedores bancarios y no bancarios, no la repartas: clasifícala por el acreedor de mayor importe y márcala con confianza "baja".
+- Si además se te da una lista de "criterios por cuenta", tiene prioridad sobre lo anterior.
 - "confianza": "alta" cuando el criterio es claro; "media" cuando decides por analogía; "baja" cuando la cuenta admite más de un renglón, el nombre es ambiguo
   (por ejemplo "impuestos por pagar" sin decir si es ISR o IVA, "cuentas por pagar" que según la relación analítica son créditos) o no hay criterio. En "motivo" di en una frase por qué.
 - No inventes cuentas ni repartas un importe entre renglones.
@@ -116,7 +134,7 @@ Deno.serve(async (req) => {
       const { data: criterios } = await sb.from("estudio_criterios").select("cuenta,fila,nota");
       const extra = [
         { type: "text", text: "CATÁLOGO DE RENGLONES DE DATOS (fila: renglón)\n" + (body.catalogo ?? []).map((c: { fila: number; renglon: string }) => `${c.fila}: ${c.renglon}`).join("\n") },
-        { type: "text", text: "CRITERIOS DE LA CASA (cuenta → fila)\n" + ((criterios ?? []).map((c) => `${c.cuenta} → ${c.fila}${c.nota ? " (" + c.nota + ")" : ""}`).join("\n") || "Aún no hay criterios cargados.") },
+        { type: "text", text: "CRITERIOS POR CUENTA (cuenta → fila)\n" + ((criterios ?? []).map((c) => `${c.cuenta} → ${c.fila}${c.nota ? " (" + c.nota + ")" : ""}`).join("\n") || "Aún no hay criterios cargados.") },
       ];
       return json(await claude(EXTRAER, [...extra, ...bloques(paginas.slice(0, 14))], herramientaExtraer, 16000));
     }
