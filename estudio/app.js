@@ -47,7 +47,7 @@
     for (const f of state.archivos) {
       if (/^image\//.test(f.type)) {
         const img = await createImageBitmap(f), c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0);
-        out.push({ archivo: f.name, n: 1, texto: '', mini: aJpeg(c, 560, .6), grande: aJpeg(c, 1700, .78) });
+        out.push({ archivo: f.name, n: 1, texto: '', mini: aJpeg(c, 440, .5), grande: aJpeg(c, 1700, .78) });
         continue;
       }
       const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
@@ -59,7 +59,7 @@
         const tc = await page.getTextContent();
         let texto = '', y = null;
         for (const it of tc.items) { if (y != null && Math.abs(it.transform[5] - y) > 2) texto += '\n'; texto += it.str + ' '; y = it.transform[5]; }
-        out.push({ archivo: f.name, n, texto: texto.trim(), mini: aJpeg(c, 560, .6), grande: aJpeg(c, 1700, .78) });
+        out.push({ archivo: f.name, n, texto: texto.trim(), mini: aJpeg(c, 440, .5), grande: aJpeg(c, 1700, .78) });
         progreso(.05 + .35 * out.length / Math.max(out.length + 1, pdf.numPages));
       }
     }
@@ -68,7 +68,8 @@
   const b64 = d => d.slice(d.indexOf(',') + 1);
   async function ia(body) {
     if (!sb) throw new Error('La lectura con IA no está disponible en la vista previa. Usa "Cargar ejemplo ficticio" para ver el flujo.');
-    const { data, error } = await sb.functions.invoke('estudio-leer', { body });
+    const espera = new Promise((_, no) => setTimeout(() => no(new Error('El servicio de lectura no respondió en ' + (body.accion === 'ping' ? '20 segundos' : '2 minutos y medio') + '. Inténtalo de nuevo; si se repite, sube solo las páginas del balance y del estado de resultados.')), body.accion === 'ping' ? 20000 : 150000));
+    const { data, error } = await Promise.race([sb.functions.invoke('estudio-leer', { body }), espera]);
     if (error) {
       let detalle = error.message || '';
       try { const j = await error.context.json(); if (j && j.error) detalle = j.error; } catch (e) { /* sin detalle */ }
@@ -78,13 +79,15 @@
     return data;
   }
   $('leer').addEventListener('click', async () => {
-    $('leer').disabled = true; msg('msg1', 'Preparando las páginas…'); progreso(.03);
+    $('leer').disabled = true; msg('msg1', 'Comprobando el acceso…'); progreso(.02);
     try {
+      await ia({ accion: 'ping' });                          // sesión, cuenta autorizada y llave, antes de subir nada
+      msg('msg1', 'Preparando las páginas…'); progreso(.03);
       state.paginas = await paginar();
       let idx = state.paginas.map((_, i) => i);
       if (idx.length > 6) {                                   // documentos largos: primero se ubican los estados con miniaturas
         msg('msg1', 'Ubicando el balance y el estado de resultados entre ' + idx.length + ' páginas…'); progreso(.45);
-        const u = await ia({ accion: 'ubicar', paginas: state.paginas.map((p, i) => ({ i, texto: p.texto.slice(0, 500), img: b64(p.mini) })) });
+        const u = await ia({ accion: 'ubicar', paginas: state.paginas.map((p, i) => p.texto.length > 150 ? { i, texto: p.texto.slice(0, 700) } : { i, texto: '', img: b64(p.mini) }) });   // las páginas digitales se ubican por su texto; solo las escaneadas viajan como imagen
         idx = (u.paginas || []).map(Number).filter(i => state.paginas[i]).slice(0, MAX_DETALLE);
         if (!idx.length) throw new Error('No encontré un balance general ni un estado de resultados en los archivos.');
       }

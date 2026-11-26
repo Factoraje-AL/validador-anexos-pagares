@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const MODELO = Deno.env.get("ESTUDIO_MODELO") ?? "claude-sonnet-5-5";
 const DOMINIO = (Deno.env.get("ESTUDIO_DOMINIO") ?? "activeleasing.com.mx").toLowerCase();
 
-type Pagina = { i: number; texto?: string; img: string };
+type Pagina = { i: number; texto?: string; img?: string };
 
 const UBICAR = `Eres analista de riesgos de una arrendadora mexicana. Recibes las páginas (miniaturas) de los documentos financieros de un cliente.
 Devuelve los índices de las páginas que contienen: (a) un balance general / estado de situación financiera, (b) un estado de resultados,
@@ -99,8 +99,9 @@ const herramientaExtraer = {
 async function claude(system: string, content: unknown[], tool: { name: string }, max_tokens: number) {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) throw new Error("La lectura con IA todavía no está conectada: falta guardar la llave ANTHROPIC_API_KEY en los secretos de Supabase.");
+  const corte = AbortSignal.timeout(130000);     // Supabase corta la función a los 150 s: mejor avisar antes
   const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
+    method: "POST", signal: corte,
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: MODELO, max_tokens, system, tools: [tool], tool_choice: { type: "tool", name: tool.name }, messages: [{ role: "user", content }] }),
   });
@@ -111,10 +112,11 @@ async function claude(system: string, content: unknown[], tool: { name: string }
   if (data.stop_reason === "max_tokens") throw new Error("El documento es demasiado largo para leerlo de una vez. Sube solo los estados financieros.");
   return uso.input;
 }
-const bloques = (paginas: Pagina[]) => paginas.flatMap((p) => [
-  { type: "text", text: `--- Página ${p.i}${p.texto ? "\nTexto extraído del PDF:\n" + p.texto : " (escaneada, sin texto)"}` },
-  { type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.img } },
-]);
+const bloques = (paginas: Pagina[]) => paginas.flatMap((p) => {
+  const b: unknown[] = [{ type: "text", text: `--- Página ${p.i}${p.texto ? "\nTexto extraído del PDF:\n" + p.texto : " (escaneada, sin texto)"}` }];
+  if (p.img) b.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.img } });
+  return b;
+});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -126,9 +128,12 @@ Deno.serve(async (req) => {
     if (!user.email.toLowerCase().endsWith("@" + DOMINIO)) return json({ error: "Tu cuenta no está autorizada para leer estados financieros." }, 403);
 
     const body = await req.json();
+    // Comprobación rápida antes de subir documentos: sesión, dominio y llave.
+    if (body.accion === "ping") return Deno.env.get("ANTHROPIC_API_KEY") ? json({ ok: true }) : json({ error: "La lectura con IA todavía no está conectada: falta guardar la llave ANTHROPIC_API_KEY en los secretos de Supabase." }, 503);
     const paginas: Pagina[] = Array.isArray(body.paginas) ? body.paginas.slice(0, 80) : [];
     if (!paginas.length) return json({ error: "No llegaron páginas." }, 400);
 
+    console.log("estudio-leer", body.accion, paginas.length, "páginas", user.email.split("@")[1]);
     if (body.accion === "ubicar") return json(await claude(UBICAR, bloques(paginas), herramientaUbicar, 1000));
     if (body.accion === "extraer") {
       const { data: criterios } = await sb.from("estudio_criterios").select("cuenta,fila,nota");
@@ -140,6 +145,8 @@ Deno.serve(async (req) => {
     }
     return json({ error: "Acción desconocida." }, 400);
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    console.error("estudio-leer", e);
+    const lento = e instanceof Error && e.name === "TimeoutError";
+    return json({ error: lento ? "La lectura tardó demasiado. Sube solo las páginas del balance y del estado de resultados e inténtalo de nuevo." : (e instanceof Error ? e.message : String(e)) }, 500);
   }
 });
