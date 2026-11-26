@@ -41,3 +41,7 @@ create policy estudio_memoria_cambiar on public.estudio_memoria for update to au
 insert into storage.buckets (id, name, public) values ('estudio', 'estudio', false) on conflict (id) do nothing;
 drop policy if exists estudio_plantilla_leer on storage.objects;
 create policy estudio_plantilla_leer on storage.objects for select to authenticated using (bucket_id = 'estudio' and public.es_personal_al());
+
+-- Permisos de tabla para usuarios con sesión (las políticas de arriba siguen limitando por dominio de correo).
+grant select on public.estudio_criterios to authenticated;
+grant select, insert, update on public.estudio_memoria to authenticated;
